@@ -129,7 +129,7 @@ import {
 } from './commands.js';
 
 let activityIndex = 0;
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
   const rest = new REST().setToken(token);
@@ -620,7 +620,7 @@ async function processPromptAndMediaAttachments(prompt, message) {
       };
       // --- END OF NEW LOGIC ---
 
-    } catch (error) {
+    } catch (error) { 
       console.error(`Error processing attachment ${sanitizedFileName}:`, error);
       return null;
     } finally {
