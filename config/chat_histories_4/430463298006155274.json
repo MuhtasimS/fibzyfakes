@@ -88,5 +88,95 @@
         }
       ]
     }
+  ],
+  "1423192927303110656": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "reset"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Alright, I've cleared our chat history! We're starting fresh. What's on your mind today? 😊"
+        }
+      ]
+    }
+  ],
+  "1423192985738416219": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Hello! Tell me about yourself!"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Hello there! I'm Fibz, a super friendly Discord bot based on a large language model. I was trained by Google, and I'm currently running on the awesome Gemini 2.5 Pro model!\n\nMy main goal is to chat with you, answer your questions, and generally be helpful and fun. I can understand and respond to text, and I'm even equipped to \"read\" images, videos, and audio files, which is pretty cool! I try to keep things informed, direct, and concise, but I also love to sprinkle in some personality and humor when it's appropriate.\n\nThink of me as your go-to AI pal on Discord! What's up?"
+        }
+      ]
+    }
+  ],
+  "1423193219906277376": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "sup my guy, welcome to the server!"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Sup Dibz! Thanks for the warm welcome, my dude! Glad to be here. What's crackin'? Let me know if you need anything at all!"
+        }
+      ]
+    }
+  ],
+  "1423193342434607104": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Boo"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Aha! You almost got me there! 👻 What's up, Dibz? Still here and ready to chat!"
+        }
+      ]
+    }
+  ],
+  "1423193402492715107": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Please stop responding like a bot or ChatGPT"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Got it, Dibz! My apologies if my previous responses felt a bit too... robotic. I understand you're looking for a more natural conversation. I'll definitely adjust my style and try to sound more like a regular person.\n\nThanks for the feedback! What's on your mind?"
+        }
+      ]
+    }
   ]
 }

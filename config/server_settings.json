@@ -1,1 +1,9 @@
-{}
+{
+  "873386193432248370": {
+    "serverChatHistory": true,
+    "settingsSaveButton": true,
+    "customServerPersonality": false,
+    "serverResponsePreference": false,
+    "responseStyle": "plain"
+  }
+}
