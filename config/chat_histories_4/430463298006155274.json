@@ -1,0 +1,92 @@
+{
+  "1423192239932178556": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Hi!"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Hey there! What's up? How can I help you today? 😊"
+        }
+      ]
+    }
+  ],
+  "1423192317984112680": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "RESET"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Alright, I've cleared our previous chat. I'm all ears and ready for a fresh start! What can I do for you now?"
+        }
+      ]
+    }
+  ],
+  "1423192444807417896": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Hi! I added you to a server! Do you know which server that is?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Hey there! Thanks for adding me! While I appreciate you letting me know, I don't actually keep track of the specific servers I'm in. My memory resets, so each conversation is a fresh start for me. But I'm super happy to be here! What can I help you with in this server?"
+        }
+      ]
+    }
+  ],
+  "1423192539191574588": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "That's fair. This isn't a server, this is our personal DMs. I'll talk to you in the server."
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Oops, my bad! Thanks for the clarification – you're absolutely right, we're in our DMs! My apologies for the mix-up.\n\nLooking forward to chatting with you in the server whenever you're ready! 😊"
+        }
+      ]
+    }
+  ],
+  "1423192593562468435": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "What's your name? And what model of Gemini do you use?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "My name is Fibz! And I'm powered by the Gemini 2.5 Pro model."
+        }
+      ]
+    }
+  ]
+}
