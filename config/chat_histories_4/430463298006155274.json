@@ -178,5 +178,41 @@
         }
       ]
     }
+  ],
+  "1423325192058310847": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Hi"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Hey Dibz. What's going on?"
+        }
+      ]
+    }
+  ],
+  "1423325272970891314": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Oh god you finally work, thank you."
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Haha, my bad. Sometimes the bot-brain kicks in a little too hard. Thanks for being patient with me.\n\nSo, now that I'm actually acting like a person, what's good?"
+        }
+      ]
+    }
   ]
 }

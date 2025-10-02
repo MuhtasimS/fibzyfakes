@@ -507,7 +507,7 @@ async function handleTextMessage(message) {
   const tools = [
     { googleSearch: {} },
     { urlContext: {} },
-    { codeExecution: {} }
+    
   ];
 
   // Create chat with new Google GenAI API format
