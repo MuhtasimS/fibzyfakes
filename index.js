@@ -34,6 +34,10 @@ const {
 } = osu;
 import axios from 'axios';
 
+import { Storage } from '@google-cloud/storage';
+const storage = new Storage();
+const BUCKET_NAME = 'fibzyfakes';
+
 import config from './config.js';
 import {
   client,
@@ -584,55 +588,53 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
     if (validAttachments.length > 0) {
       const attachmentParts = await Promise.all(
-        validAttachments.map(async (attachment) => {
-          const sanitizedFileName = sanitizeFileName(attachment.name);
-          const uniqueTempFilename = `${message.author.id}-${attachment.id}-${sanitizedFileName}`;
-          const filePath = path.join(TEMP_DIR, uniqueTempFilename);
+  validAttachments.map(async (attachment) => {
+    const sanitizedFileName = sanitizeFileName(attachment.name);
+    const uniqueTempFilename = `${message.author.id}-${attachment.id}-${sanitizedFileName}`;
+    const filePath = path.join(TEMP_DIR, uniqueTempFilename);
 
-          try {
-            await downloadFile(attachment.url, filePath);
-            // Upload file using new Google GenAI API format
-            const uploadResult = await genAI.files.upload({
-              file: filePath,
-              config: {
-                mimeType: attachment.contentType,
-                displayName: sanitizedFileName,
-              }
-            });
+    try {
+      // This part is correct, it downloads the file to a temporary location.
+      await downloadFile(attachment.url, filePath);
 
-            const name = uploadResult.name;
-            if (name === null) {
-              throw new Error(`Unable to extract file name from upload result.`);
-            }
+      // --- NEW GCS UPLOAD LOGIC STARTS HERE ---
 
-            if (attachment.contentType.startsWith('video/')) {
-              // Wait for video processing to complete using new API
-              let file = await genAI.files.get({ name: name });
-              while (file.state === 'PROCESSING') {
-                process.stdout.write(".");
-                await new Promise((resolve) => setTimeout(resolve, 10_000));
-                file = await genAI.files.get({ name: name });
-              }
-              if (file.state === 'FAILED') {
-                throw new Error(`Video processing failed for ${sanitizedFileName}.`);
-              }
-            }
+      // Define a unique name for the file in the GCS bucket.
+      const gcsFileName = `${Date.now()}-${sanitizedFileName}`;
 
-            return createPartFromUri(uploadResult.uri, uploadResult.mimeType);
-          } catch (error) {
-            console.error(`Error processing attachment ${sanitizedFileName}:`, error);
-            return null;
-          } finally {
-            try {
-              await fs.unlink(filePath);
-            } catch (unlinkError) {
-              if (unlinkError.code !== 'ENOENT') {
-                console.error(`Error deleting temporary file ${filePath}:`, unlinkError);
-              }
-            }
-          }
-        })
-      );
+      // Upload the local file from the temp directory to your GCS bucket.
+      await storage.bucket(BUCKET_NAME).upload(filePath, {
+        destination: gcsFileName,
+      });
+
+      // Construct the GCS URI that Vertex AI needs.
+      const gcsUri = `gs://${BUCKET_NAME}/${gcsFileName}`;
+
+      // Return the object structure that the Vertex AI API expects for a file.
+      // This replaces the old `createPartFromUri` function call.
+      return {
+        fileData: {
+          mimeType: attachment.contentType,
+          fileUri: gcsUri,
+        },
+      };
+      // --- END OF NEW LOGIC ---
+
+    } catch (error) {
+      console.error(`Error processing attachment ${sanitizedFileName}:`, error);
+      return null;
+    } finally {
+      // This original cleanup logic is perfect and ensures the temporary local file is deleted.
+      try {
+        await fs.unlink(filePath);
+      } catch (unlinkError) {
+        if (unlinkError.code!== 'ENOENT') {
+          console.error(`Error deleting temporary file ${filePath}:`, unlinkError);
+        }
+      }
+    }
+  })
+);
       parts = [...parts, ...attachmentParts.filter(part => part !== null)];
     }
   }

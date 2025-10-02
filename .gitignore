@@ -6,3 +6,6 @@ node_modules/
 
 # Google Cloud service account key
 service-account-key.json
+
+# chat logs
+config/chat_histories_4
