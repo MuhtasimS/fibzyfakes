@@ -15,7 +15,8 @@ import path from 'path';
 import {
   fileURLToPath
 } from 'url';
-
+const { EmbedBuilder } = require('discord.js');
+const config = require('./config.js'); // Adjust path if needed
 import config from './config.js';
 
 // --- Core Client and API Initialization ---

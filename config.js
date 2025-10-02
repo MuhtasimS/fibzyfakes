@@ -1,5 +1,5 @@
 export default {
-  defaultResponseFormat: "Embedded",
+  defaultResponseFormat: "Plain",
   hexColour: "#505050",
   workInDMs: true,
   shouldDisplayPersonalityButtons: true,
@@ -24,6 +24,6 @@ export default {
     settingsSaveButton: true,
     customServerPersonality: false,
     serverResponsePreference: false,
-    responseStyle: "embedded"
+    responseStyle: "plain"
   }
 };
