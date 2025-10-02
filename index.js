@@ -51,8 +51,8 @@ import {
   getUserResponsePreference,
   initializeBlacklistForGuild
 } from './botManager.js';
-const { EmbedBuilder } = require('discord.js');
-const config = require('./config.js'); // Adjust path if needed
+
+
 initialize().catch(console.error);
 
 
