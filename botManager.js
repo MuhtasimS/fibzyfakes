@@ -31,7 +31,7 @@ export const client = new Client({
 });
 
 // Initialize with new API format that requires apiKey object
-export const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
+export const genAI = new GoogleGenAI();
 export { createUserContent, createPartFromUri };
 export const token = process.env.DISCORD_BOT_TOKEN;
 
