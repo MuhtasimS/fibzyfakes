@@ -3,6 +3,7 @@ dotenv.config();
 import {
   Client,
   GatewayIntentBits,
+  AttachmentBuilder,
   Partials
 } from 'discord.js';
 import {

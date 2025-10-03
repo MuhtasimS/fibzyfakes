@@ -72,21 +72,21 @@ const MODEL = "gemini-2.5-pro";
 `HARM_BLOCK_THRESHOLD_UNSPECIFIED`  -  Threshold is unspecified, block using default threshold
 */
 const safetySettings = [{
-    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
+  category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+  threshold: HarmBlockThreshold.BLOCK_NONE,
+},
+{
+  category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+  threshold: HarmBlockThreshold.BLOCK_NONE,
+},
+{
+  category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+  threshold: HarmBlockThreshold.BLOCK_NONE,
+},
+{
+  category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+  threshold: HarmBlockThreshold.BLOCK_NONE,
+},
 ];
 
 const generationConfig = {
@@ -138,8 +138,8 @@ client.once('clientReady', async () => {
 
     await rest.put(
       Routes.applicationCommands(client.user.id), {
-        body: commands
-      },
+      body: commands
+    },
     );
 
     console.log('Successfully reloaded application (/) commands.');
@@ -327,7 +327,7 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
             flags: MessageFlags.Ephemeral
           });
         }
-      } catch (error) {}
+      } catch (error) { }
     }
   }
 
@@ -337,7 +337,7 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
 
     if (channel) {
       if (message) {
-        message.delete().catch(() => {});
+        message.delete().catch(() => { });
       }
     }
   }
@@ -511,7 +511,7 @@ async function handleTextMessage(message) {
   const tools = [
     { googleSearch: {} },
     { urlContext: {} },
-    
+
   ];
 
   // Create chat with new Google GenAI API format
@@ -588,53 +588,53 @@ async function processPromptAndMediaAttachments(prompt, message) {
 
     if (validAttachments.length > 0) {
       const attachmentParts = await Promise.all(
-  validAttachments.map(async (attachment) => {
-    const sanitizedFileName = sanitizeFileName(attachment.name);
-    const uniqueTempFilename = `${message.author.id}-${attachment.id}-${sanitizedFileName}`;
-    const filePath = path.join(TEMP_DIR, uniqueTempFilename);
+        validAttachments.map(async (attachment) => {
+          const sanitizedFileName = sanitizeFileName(attachment.name);
+          const uniqueTempFilename = `${message.author.id}-${attachment.id}-${sanitizedFileName}`;
+          const filePath = path.join(TEMP_DIR, uniqueTempFilename);
 
-    try {
-      // This part is correct, it downloads the file to a temporary location.
-      await downloadFile(attachment.url, filePath);
+          try {
+            // This part is correct, it downloads the file to a temporary location.
+            await downloadFile(attachment.url, filePath);
 
-      // --- NEW GCS UPLOAD LOGIC STARTS HERE ---
+            // --- NEW GCS UPLOAD LOGIC STARTS HERE ---
 
-      // Define a unique name for the file in the GCS bucket.
-      const gcsFileName = `${Date.now()}-${sanitizedFileName}`;
+            // Define a unique name for the file in the GCS bucket.
+            const gcsFileName = `${Date.now()}-${sanitizedFileName}`;
 
-      // Upload the local file from the temp directory to your GCS bucket.
-      await storage.bucket(BUCKET_NAME).upload(filePath, {
-        destination: gcsFileName,
-      });
+            // Upload the local file from the temp directory to your GCS bucket.
+            await storage.bucket(BUCKET_NAME).upload(filePath, {
+              destination: gcsFileName,
+            });
 
-      // Construct the GCS URI that Vertex AI needs.
-      const gcsUri = `gs://${BUCKET_NAME}/${gcsFileName}`;
+            // Construct the GCS URI that Vertex AI needs.
+            const gcsUri = `gs://${BUCKET_NAME}/${gcsFileName}`;
 
-      // Return the object structure that the Vertex AI API expects for a file.
-      // This replaces the old `createPartFromUri` function call.
-      return {
-        fileData: {
-          mimeType: attachment.contentType,
-          fileUri: gcsUri,
-        },
-      };
-      // --- END OF NEW LOGIC ---
+            // Return the object structure that the Vertex AI API expects for a file.
+            // This replaces the old `createPartFromUri` function call.
+            return {
+              fileData: {
+                mimeType: attachment.contentType,
+                fileUri: gcsUri,
+              },
+            };
+            // --- END OF NEW LOGIC ---
 
-    } catch (error) { 
-      console.error(`Error processing attachment ${sanitizedFileName}:`, error);
-      return null;
-    } finally {
-      // This original cleanup logic is perfect and ensures the temporary local file is deleted.
-      try {
-        await fs.unlink(filePath);
-      } catch (unlinkError) {
-        if (unlinkError.code!== 'ENOENT') {
-          console.error(`Error deleting temporary file ${filePath}:`, unlinkError);
-        }
-      }
-    }
-  })
-);
+          } catch (error) {
+            console.error(`Error processing attachment ${sanitizedFileName}:`, error);
+            return null;
+          } finally {
+            // This original cleanup logic is perfect and ensures the temporary local file is deleted.
+            try {
+              await fs.unlink(filePath);
+            } catch (unlinkError) {
+              if (unlinkError.code !== 'ENOENT') {
+                console.error(`Error deleting temporary file ${filePath}:`, unlinkError);
+              }
+            }
+          }
+        })
+      );
       parts = [...parts, ...attachmentParts.filter(part => part !== null)];
     }
   }
@@ -1608,25 +1608,25 @@ async function showSettings(interaction, edit = false) {
     }
 
     const mainButtons = [{
-        customId: 'clear-memory',
-        label: 'Clear Memory',
-        emoji: '🧹',
-        style: ButtonStyle.Danger
-      },
-      {
-        customId: 'general-settings',
-        label: 'General Settings',
-        emoji: '⚙️',
-        style: ButtonStyle.Secondary
-      },
+      customId: 'clear-memory',
+      label: 'Clear Memory',
+      emoji: '🧹',
+      style: ButtonStyle.Danger
+    },
+    {
+      customId: 'general-settings',
+      label: 'General Settings',
+      emoji: '⚙️',
+      style: ButtonStyle.Secondary
+    },
     ];
 
     const mainButtonsComponents = mainButtons.map(config =>
       new ButtonBuilder()
-      .setCustomId(config.customId)
-      .setLabel(config.label)
-      .setEmoji(config.emoji)
-      .setStyle(config.style)
+        .setCustomId(config.customId)
+        .setLabel(config.label)
+        .setEmoji(config.emoji)
+        .setStyle(config.style)
     );
 
     const mainActionRow = new ActionRowBuilder().addComponents(...mainButtonsComponents);
@@ -1662,52 +1662,52 @@ async function handleSubButtonInteraction(interaction, update = false) {
   const responseMode = getUserResponsePreference(userId);
   const subButtonConfigs = {
     'general-settings': [{
-        customId: 'always-respond',
-        label: `Always Respond: ${state.activeUsersInChannels[channelId][userId] ? 'ON' : 'OFF'}`,
-        emoji: '↩️',
-        style: ButtonStyle.Secondary
-      },
-      {
-        customId: 'toggle-response-mode',
-        label: `Toggle Response Mode: ${responseMode}`,
-        emoji: '📝',
-        style: ButtonStyle.Secondary
-      },
-      {
-        customId: 'download-conversation',
-        label: 'Download Conversation',
-        emoji: '🗃️',
-        style: ButtonStyle.Secondary
-      },
-      ...(shouldDisplayPersonalityButtons ? [{
-          customId: 'custom-personality',
-          label: 'Custom Personality',
-          emoji: '🙌',
-          style: ButtonStyle.Primary
-        },
-        {
-          customId: 'remove-personality',
-          label: 'Remove Personality',
-          emoji: '🤖',
-          style: ButtonStyle.Danger
-        },
-      ] : []),
-      {
-        customId: 'back_to_main_settings',
-        label: 'Back',
-        emoji: '🔙',
-        style: ButtonStyle.Secondary
-      },
+      customId: 'always-respond',
+      label: `Always Respond: ${state.activeUsersInChannels[channelId][userId] ? 'ON' : 'OFF'}`,
+      emoji: '↩️',
+      style: ButtonStyle.Secondary
+    },
+    {
+      customId: 'toggle-response-mode',
+      label: `Toggle Response Mode: ${responseMode}`,
+      emoji: '📝',
+      style: ButtonStyle.Secondary
+    },
+    {
+      customId: 'download-conversation',
+      label: 'Download Conversation',
+      emoji: '🗃️',
+      style: ButtonStyle.Secondary
+    },
+    ...(shouldDisplayPersonalityButtons ? [{
+      customId: 'custom-personality',
+      label: 'Custom Personality',
+      emoji: '🙌',
+      style: ButtonStyle.Primary
+    },
+    {
+      customId: 'remove-personality',
+      label: 'Remove Personality',
+      emoji: '🤖',
+      style: ButtonStyle.Danger
+    },
+    ] : []),
+    {
+      customId: 'back_to_main_settings',
+      label: 'Back',
+      emoji: '🔙',
+      style: ButtonStyle.Secondary
+    },
     ],
   };
 
   if (update || subButtonConfigs[interaction.customId]) {
     const subButtons = subButtonConfigs[update ? 'general-settings' : interaction.customId].map(config =>
       new ButtonBuilder()
-      .setCustomId(config.customId)
-      .setLabel(config.label)
-      .setEmoji(config.emoji)
-      .setStyle(config.style)
+        .setCustomId(config.customId)
+        .setLabel(config.label)
+        .setEmoji(config.emoji)
+        .setStyle(config.style)
     );
 
     const actionRows = [];
@@ -1718,9 +1718,9 @@ async function handleSubButtonInteraction(interaction, update = false) {
     await interaction.update({
       embeds: [
         new EmbedBuilder()
-        .setColor(0x00FFFF)
-        .setTitle(`${update ? 'General Settings' : interaction.customId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}`)
-        .setDescription('Please choose an option from the buttons below:'),
+          .setColor(0x00FFFF)
+          .setTitle(`${update ? 'General Settings' : interaction.customId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}`)
+          .setDescription('Please choose an option from the buttons below:'),
       ],
       components: actionRows,
       flags: MessageFlags.Ephemeral,
@@ -1751,61 +1751,61 @@ async function showDashboard(interaction) {
   }
   initializeBlacklistForGuild(interaction.guild.id);
   const buttonConfigs = [{
-      customId: "server-chat-history",
-      label: "Toggle Server-Wide Conversation History",
-      emoji: "📦",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "clear-server",
-      label: "Clear Server-Wide Memory",
-      emoji: "🧹",
-      style: ButtonStyle.Danger,
-    },
-    {
-      customId: "settings-save-buttons",
-      label: "Toggle Add Settings And Save Button",
-      emoji: "🔘",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "toggle-server-personality",
-      label: "Toggle Server Personality",
-      emoji: "🤖",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "custom-server-personality",
-      label: "Custom Server Personality",
-      emoji: "🙌",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "toggle-response-server-mode",
-      label: "Toggle Server-Wide Responses Style",
-      emoji: "✏️",
-      style: ButtonStyle.Primary,
-    },
-    {
-      customId: "response-server-mode",
-      label: "Server-Wide Responses Style",
-      emoji: "📝",
-      style: ButtonStyle.Secondary,
-    },
-    {
-      customId: "download-server-conversation",
-      label: "Download Server Conversation",
-      emoji: "🗃️",
-      style: ButtonStyle.Secondary,
-    }
+    customId: "server-chat-history",
+    label: "Toggle Server-Wide Conversation History",
+    emoji: "📦",
+    style: ButtonStyle.Primary,
+  },
+  {
+    customId: "clear-server",
+    label: "Clear Server-Wide Memory",
+    emoji: "🧹",
+    style: ButtonStyle.Danger,
+  },
+  {
+    customId: "settings-save-buttons",
+    label: "Toggle Add Settings And Save Button",
+    emoji: "🔘",
+    style: ButtonStyle.Primary,
+  },
+  {
+    customId: "toggle-server-personality",
+    label: "Toggle Server Personality",
+    emoji: "🤖",
+    style: ButtonStyle.Primary,
+  },
+  {
+    customId: "custom-server-personality",
+    label: "Custom Server Personality",
+    emoji: "🙌",
+    style: ButtonStyle.Primary,
+  },
+  {
+    customId: "toggle-response-server-mode",
+    label: "Toggle Server-Wide Responses Style",
+    emoji: "✏️",
+    style: ButtonStyle.Primary,
+  },
+  {
+    customId: "response-server-mode",
+    label: "Server-Wide Responses Style",
+    emoji: "📝",
+    style: ButtonStyle.Secondary,
+  },
+  {
+    customId: "download-server-conversation",
+    label: "Download Server Conversation",
+    emoji: "🗃️",
+    style: ButtonStyle.Secondary,
+  }
   ];
 
   const allButtons = buttonConfigs.map((config) =>
     new ButtonBuilder()
-    .setCustomId(config.customId)
-    .setLabel(config.label)
-    .setEmoji(config.emoji)
-    .setStyle(config.style)
+      .setCustomId(config.customId)
+      .setLabel(config.label)
+      .setEmoji(config.emoji)
+      .setStyle(config.style)
   );
 
   const actionRows = [];
@@ -1922,9 +1922,9 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   const stopGeneratingButton = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
-      .setCustomId('stopGenerating')
-      .setLabel('Stop Generating')
-      .setStyle(ButtonStyle.Danger)
+        .setCustomId('stopGenerating')
+        .setLabel('Stop Generating')
+        .setStyle(ButtonStyle.Danger)
     );
   let botMessage;
   if (!initialBotMessage) {
@@ -1934,14 +1934,14 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         content: 'Let me think..',
         components: [stopGeneratingButton]
       });
-    } catch (error) {}
+    } catch (error) { }
   } else {
     botMessage = initialBotMessage;
     try {
       botMessage.edit({
         components: [stopGeneratingButton]
       });
-    } catch (error) {}
+    } catch (error) { }
   }
 
   let stopGeneration = false;
@@ -1989,23 +1989,26 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   const updateMessage = () => {
     if (stopGeneration) {
-      return;
+        return;
     }
     if (tempResponse.trim() === "") {
-      botMessage.edit({
-        content: '...'
-      });
+        botMessage.edit({
+            content: '...'
+        });
     } else if (userResponsePreference === 'Embedded') {
-      updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
+        updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
     } else {
-      botMessage.edit({
-        content: tempResponse,
-        embeds: []
-      });
+        // Add a safety check to prevent crashing on long streaming updates
+        if (tempResponse.length < 1950) {
+            botMessage.edit({
+                content: tempResponse,
+                embeds:[]
+            });
+        }
     }
     clearTimeout(updateTimeout);
     updateTimeout = null;
-  };
+};
 
   while (attempts > 0 && !stopGeneration) {
     try {
@@ -2204,7 +2207,7 @@ function addGroundingMetadataToEmbed(embed, groundingMetadata) {
         return `• Source ${index + 1}`;
       })
       .join('\n');
-    
+
     embed.addFields({
       name: '📚 Sources',
       value: chunks,
@@ -2222,7 +2225,7 @@ function addUrlContextMetadataToEmbed(embed, urlContextMetadata) {
         return `${emoji} ${urlData.retrieved_url}`;
       })
       .join('\n');
-    
+
     embed.addFields({
       name: '🔗 URL Context',
       value: urlList,
@@ -2237,7 +2240,7 @@ function shouldShowGroundingMetadata(message) {
   const userResponsePreference = message.guild && state.serverSettings[message.guild.id]?.serverResponsePreference
     ? state.serverSettings[message.guild.id].responseStyle
     : getUserResponsePreference(userId);
-  
+
   return userResponsePreference === 'Embedded';
 }
 
