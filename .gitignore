@@ -8,4 +8,4 @@ node_modules/
 service-account-key.json
 
 # chat logs
-config/chat_histories_4
+config/
