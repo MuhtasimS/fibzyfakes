@@ -502,26 +502,44 @@ async function handleTextMessage(message) {
     infoStr = `\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\``;
   }
 
-  const isServerChatHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
-  const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
-  const finalInstructions = isServerChatHistoryEnabled ? instructions + infoStr : instructions;
-  const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
+ // --- NEW LOGIC TO PREPEND DEFAULT PERSONALITY ---
 
-  // Always enable all three tools: Google Search, URL Context, and Code Execution
+// 1. Start with the base defaultPersonality as the foundation for all interactions.
+let finalInstructions = defaultPersonality;
+
+// 2. If custom instructions exist (from user, channel, or server settings), append them.
+if (instructions) {
+  finalInstructions += "\n\n---\n\n" + instructions;
+}
+
+// 3. Append server and user info if applicable, just like before.
+const isServerChatHistoryEnabled = guildId? state.serverSettings[guildId]?.serverChatHistory : false;
+if (isServerChatHistoryEnabled && infoStr) {
+  finalInstructions += infoStr;
+}
+
+// This part of the logic remains the same.
+const isChannelChatHistoryEnabled = guildId? state.channelWideChatHistory[channelId] : false;
+const historyId = isChannelChatHistoryEnabled? (isServerChatHistoryEnabled? guildId : channelId) : userId;
+
+// --- END OF NEW LOGIC ---
+
+  // Always enable all three tools: Google Search, URL Context, and Code Execution.
   const tools = [
     { googleSearch: {} },
     { urlContext: {} },
-
+//Disabled Code execution for now as it crashes the system.
   ];
 
   // Create chat with new Google GenAI API format
-  const chat = genAI.chats.create({
-    model: MODEL,
-    config: {
-      systemInstruction: {
-        role: "system",
-        parts: [{ text: finalInstructions || defaultPersonality }]
-      },
+  // Create chat with new Google GenAI API format
+const chat = genAI.chats.create({
+  model: MODEL,
+  config: {
+    systemInstruction: {
+      role: "system",
+      parts: [{ text: finalInstructions }] // The fallback is no longer needed.
+    },
       ...generationConfig,
       safetySettings,
       tools
