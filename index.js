@@ -535,7 +535,55 @@ async function handleTextMessage(message) {
   } catch (error) {
     return console.error('Error initialising message', error);
   }
+// --- NEW LOGIC TO CROSS-REFERENCE CONVERSATIONS & INSTRUCTIONS ---
 
+// 1. Detect if any users were mentioned in the message (and ignore mentions of the bot itself).
+const mentionedUser = message.mentions.users.find(user =>!user.bot);
+
+if (mentionedUser) {
+    console.log(`Referenced user detected: ${mentionedUser.username} (ID: ${mentionedUser.id})`);
+
+    // 2. Try to load the mentioned user's CHAT HISTORY.
+    try {
+        const otherUserHistory = getHistory(mentionedUser.id);
+        if (otherUserHistory && otherUserHistory.length > 0) {
+            const historyText = otherUserHistory.map(h => {
+                const content = h.parts.map(p => p.text).join(' ');
+                return `${h.role}: ${content}`;
+            }).join('\n');
+
+            const historyContextPart = { 
+                text: `\n\n--- Additional Context: Conversation History ---\nFor my next response, I must consider my previous conversation history with the user "${mentionedUser.username}". Here is that history:\n\n${historyText}\n\n--- End of Conversation History ---`
+            };
+
+            parts.unshift(historyContextPart);
+            console.log(`Successfully loaded and prepended chat history for ${mentionedUser.username}.`);
+        } else {
+            console.log(`No chat history found for the mentioned user: ${mentionedUser.username}`);
+        }
+    } catch (error) {
+        console.log(`Could not find or load a chat history for the mentioned user: ${mentionedUser.username}`);
+    }
+
+    // 3. Try to load the mentioned user's PERSONALITY INSTRUCTIONS.
+    try {
+        const personalityInstructions = state.customInstructions[mentionedUser.id];
+        if (personalityInstructions && personalityInstructions.trim()!== '') {
+            const instructionContextPart = {
+                text: `\n\n--- Additional Context: User's Personality Instructions ---\nFor my next response, I must also consider the personality instructions given to me by "${mentionedUser.username}". Here are those instructions:\n\n"${personalityInstructions}"\n\n--- End of Personality Instructions ---`
+            };
+
+            parts.unshift(instructionContextPart);
+            console.log(`Successfully loaded and prepended personality instructions for ${mentionedUser.username}.`);
+        } else {
+            console.log(`No custom instructions found for the mentioned user: ${mentionedUser.username}`);
+        }
+    } catch (error) {
+        console.log(`Could not load personality instructions for the mentioned user: ${mentionedUser.username}`);
+    }
+}
+
+// --- END OF NEW LOGIC ---
   let instructions;
   if (guildId) {
     if (state.channelWideChatHistory[channelId]) {
