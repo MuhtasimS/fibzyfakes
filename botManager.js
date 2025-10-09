@@ -4,7 +4,10 @@ import {
   Client,
   GatewayIntentBits,
   AttachmentBuilder,
-  Partials
+  Partials,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } from 'discord.js';
 import {
   GoogleGenAI,

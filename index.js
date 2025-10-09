@@ -344,18 +344,74 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
 }
 
 async function handleClearMemoryCommand(interaction) {
-  const serverChatHistoryEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.serverChatHistory : false;
-  if (!serverChatHistoryEnabled) {
-    await clearChatHistory(interaction);
-  } else {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF5555)
-      .setTitle('Feature Disabled')
-      .setDescription('Clearing chat history is not enabled for this server, Server-Wide chat history is active.');
-    await interaction.reply({
-      embeds: [embed]
-    });
-  }
+    const userId = interaction.user.id;
+    const serverChatHistoryEnabled = interaction.guild? state.serverSettings[interaction.guild.id]?.serverChatHistory : false;
+
+    if (serverChatHistoryEnabled) {
+        // This is the original safety check. If server-wide history is on, we stop here.
+        const embed = new EmbedBuilder()
+           .setColor(0xFF5555)
+           .setTitle('Feature Disabled')
+           .setDescription('Clearing chat history is not enabled for this server, as Server-Wide chat history is active.');
+        await interaction.reply({
+            embeds: [embed],
+            ephemeral: true
+        });
+    } else {
+        // Server-wide history is OFF, so we can proceed with the confirmation flow.
+
+        // First, check if there's any personal history to clear.
+        if (!state.chatHistories[userId]) {
+            return await interaction.reply({ content: 'You have no personal chat history to clear.', ephemeral: true });
+        }
+
+        // 1. Create the confirmation buttons.
+        const confirmButton = new ButtonBuilder()
+          .setCustomId('confirm_clear')
+          .setLabel('Yes, clear it')
+          .setStyle(ButtonStyle.Danger); // Red for a destructive action.
+
+        const cancelButton = new ButtonBuilder()
+          .setCustomId('cancel_clear')
+          .setLabel('No, cancel')
+          .setStyle(ButtonStyle.Secondary); // Grey for a safe action.
+
+        // 2. Create an action row to hold the buttons.
+        const row = new ActionRowBuilder()
+          .addComponents(confirmButton, cancelButton);
+
+        // 3. Send the confirmation message with the buttons.
+        const confirmationMessage = await interaction.reply({
+            content: 'Are you sure you want to permanently clear your personal chat history?',
+            components: [row],
+            ephemeral: true // Only the user who ran the command will see this.
+        });
+
+        // 4. Create a collector to listen for a button click from only this user.
+        const filter = i => i.user.id === userId;
+        const collector = confirmationMessage.createMessageComponentCollector({ filter, time: 60000 }); // Wait for 60 seconds.
+
+        collector.on('collect', async i => {
+            if (i.customId === 'confirm_clear') {
+                // If "Yes" is clicked, clear the memory.
+                delete state.chatHistories[userId];
+                await saveStateToFile();
+                // Update the message to show success and remove the buttons.
+                await i.update({ content: 'Your personal chat history has been cleared.', components: [] });
+            } else if (i.customId === 'cancel_clear') {
+                // If "No" is clicked, cancel the action.
+                await i.update({ content: 'Action canceled. Your chat history was not cleared.', components: [] });
+            }
+        });
+
+        collector.on('end', collected => {
+            // This runs after the 60-second timer is up.
+            if (collected.size === 0) {
+                // If no button was clicked, edit the message to show it timed out.
+                interaction.editReply({ content: 'Confirmation timed out. Your chat history was not cleared.', components: [] });
+            }
+        });
+    }
 }
 
 async function handleCustomPersonalityCommand(interaction) {
