@@ -4,6 +4,16 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 
 ---
 
+## NEW AND IMPROVED FEATURES
+- **Now powered by 2.5 Gemini Pro!**
+- **Super duper advanced smart Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx, but can't write code at the moment)
+- **PERSISTENT, PERMANENT, REFERENCEABLE MEMORY!!!** It can now remember stuff and if it can't, it can look up archives!!!
+- **Can recognize different people within the same conversation!**
+- **Updated privacy and consent protocol**
+- **Personalized personalities!**
+- **Improved and foolproofed button-based UI**
+- Tons of other features that I coded for over 270 hours so far!!!
+
 ## Features
 
 - **Conversational AI** powered by Google Gemini (Gemini-2.5-Flash)

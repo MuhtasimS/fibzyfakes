@@ -344,74 +344,74 @@ async function handleDeleteMessageInteraction(interaction, msgId) {
 }
 
 async function handleClearMemoryCommand(interaction) {
-    const userId = interaction.user.id;
-    const serverChatHistoryEnabled = interaction.guild? state.serverSettings[interaction.guild.id]?.serverChatHistory : false;
+  const userId = interaction.user.id;
+  const serverChatHistoryEnabled = interaction.guild ? state.serverSettings[interaction.guild.id]?.serverChatHistory : false;
 
-    if (serverChatHistoryEnabled) {
-        // This is the original safety check. If server-wide history is on, we stop here.
-        const embed = new EmbedBuilder()
-           .setColor(0xFF5555)
-           .setTitle('Feature Disabled')
-           .setDescription('Clearing chat history is not enabled for this server, as Server-Wide chat history is active.');
-        await interaction.reply({
-            embeds: [embed],
-            ephemeral: true
-        });
-    } else {
-        // Server-wide history is OFF, so we can proceed with the confirmation flow.
+  if (serverChatHistoryEnabled) {
+    // This is the original safety check. If server-wide history is on, we stop here.
+    const embed = new EmbedBuilder()
+      .setColor(0xFF5555)
+      .setTitle('Feature Disabled')
+      .setDescription('Clearing chat history is not enabled for this server, as Server-Wide chat history is active.');
+    await interaction.reply({
+      embeds: [embed],
+      ephemeral: true
+    });
+  } else {
+    // Server-wide history is OFF, so we can proceed with the confirmation flow.
 
-        // First, check if there's any personal history to clear.
-        if (!state.chatHistories[userId]) {
-            return await interaction.reply({ content: 'You have no personal chat history to clear.', ephemeral: true });
-        }
-
-        // 1. Create the confirmation buttons.
-        const confirmButton = new ButtonBuilder()
-          .setCustomId('confirm_clear')
-          .setLabel('Yes, clear it')
-          .setStyle(ButtonStyle.Danger); // Red for a destructive action.
-
-        const cancelButton = new ButtonBuilder()
-          .setCustomId('cancel_clear')
-          .setLabel('No, cancel')
-          .setStyle(ButtonStyle.Secondary); // Grey for a safe action.
-
-        // 2. Create an action row to hold the buttons.
-        const row = new ActionRowBuilder()
-          .addComponents(confirmButton, cancelButton);
-
-        // 3. Send the confirmation message with the buttons.
-        const confirmationMessage = await interaction.reply({
-            content: 'Are you sure you want to permanently clear your personal chat history?',
-            components: [row],
-            ephemeral: true // Only the user who ran the command will see this.
-        });
-
-        // 4. Create a collector to listen for a button click from only this user.
-        const filter = i => i.user.id === userId;
-        const collector = confirmationMessage.createMessageComponentCollector({ filter, time: 60000 }); // Wait for 60 seconds.
-
-        collector.on('collect', async i => {
-            if (i.customId === 'confirm_clear') {
-                // If "Yes" is clicked, clear the memory.
-                delete state.chatHistories[userId];
-                await saveStateToFile();
-                // Update the message to show success and remove the buttons.
-                await i.update({ content: 'Your personal chat history has been cleared.', components: [] });
-            } else if (i.customId === 'cancel_clear') {
-                // If "No" is clicked, cancel the action.
-                await i.update({ content: 'Action canceled. Your chat history was not cleared.', components: [] });
-            }
-        });
-
-        collector.on('end', collected => {
-            // This runs after the 60-second timer is up.
-            if (collected.size === 0) {
-                // If no button was clicked, edit the message to show it timed out.
-                interaction.editReply({ content: 'Confirmation timed out. Your chat history was not cleared.', components: [] });
-            }
-        });
+    // First, check if there's any personal history to clear.
+    if (!state.chatHistories[userId]) {
+      return await interaction.reply({ content: 'You have no personal chat history to clear.', ephemeral: true });
     }
+
+    // 1. Create the confirmation buttons.
+    const confirmButton = new ButtonBuilder()
+      .setCustomId('confirm_clear')
+      .setLabel('Yes, clear it')
+      .setStyle(ButtonStyle.Danger); // Red for a destructive action.
+
+    const cancelButton = new ButtonBuilder()
+      .setCustomId('cancel_clear')
+      .setLabel('No, cancel')
+      .setStyle(ButtonStyle.Secondary); // Grey for a safe action.
+
+    // 2. Create an action row to hold the buttons.
+    const row = new ActionRowBuilder()
+      .addComponents(confirmButton, cancelButton);
+
+    // 3. Send the confirmation message with the buttons.
+    const confirmationMessage = await interaction.reply({
+      content: 'Are you sure you want to permanently clear your personal chat history?',
+      components: [row],
+      ephemeral: true // Only the user who ran the command will see this.
+    });
+
+    // 4. Create a collector to listen for a button click from only this user.
+    const filter = i => i.user.id === userId;
+    const collector = confirmationMessage.createMessageComponentCollector({ filter, time: 60000 }); // Wait for 60 seconds.
+
+    collector.on('collect', async i => {
+      if (i.customId === 'confirm_clear') {
+        // If "Yes" is clicked, clear the memory.
+        delete state.chatHistories[userId];
+        await saveStateToFile();
+        // Update the message to show success and remove the buttons.
+        await i.update({ content: 'Your personal chat history has been cleared.', components: [] });
+      } else if (i.customId === 'cancel_clear') {
+        // If "No" is clicked, cancel the action.
+        await i.update({ content: 'Action canceled. Your chat history was not cleared.', components: [] });
+      }
+    });
+
+    collector.on('end', collected => {
+      // This runs after the 60-second timer is up.
+      if (collected.size === 0) {
+        // If no button was clicked, edit the message to show it timed out.
+        interaction.editReply({ content: 'Confirmation timed out. Your chat history was not cleared.', components: [] });
+      }
+    });
+  }
 }
 
 async function handleCustomPersonalityCommand(interaction) {
@@ -535,55 +535,51 @@ async function handleTextMessage(message) {
   } catch (error) {
     return console.error('Error initialising message', error);
   }
-// --- NEW LOGIC TO CROSS-REFERENCE CONVERSATIONS & INSTRUCTIONS ---
 
-// 1. Detect if any users were mentioned in the message (and ignore mentions of the bot itself).
-const mentionedUser = message.mentions.users.find(user =>!user.bot);
+  // --- NEW LOGIC TO CROSS-REFERENCE CONVERSATIONS & INSTRUCTIONS (v3) ---
 
-if (mentionedUser) {
+  // 1. Detect if any users were mentioned in the message (and ignore mentions of the bot itself).
+  const mentionedUser = message.mentions.users.find(user => !user.bot);
+
+  if (mentionedUser) {
     console.log(`Referenced user detected: ${mentionedUser.username} (ID: ${mentionedUser.id})`);
 
-    // 2. Try to load the mentioned user's CHAT HISTORY.
-    try {
-        const otherUserHistory = getHistory(mentionedUser.id);
-        if (otherUserHistory && otherUserHistory.length > 0) {
-            const historyText = otherUserHistory.map(h => {
-                const content = h.parts.map(p => p.text).join(' ');
-                return `${h.role}: ${content}`;
-            }).join('\n');
+    // --- CHAT HISTORY LOOKUP ---
+    // Use the bot's own getHistory() function, as it knows the correct way to access the state.
+    const otherUserHistory = getHistory(mentionedUser.id);
 
-            const historyContextPart = { 
-                text: `\n\n--- Additional Context: Conversation History ---\nFor my next response, I must consider my previous conversation history with the user "${mentionedUser.username}". Here is that history:\n\n${historyText}\n\n--- End of Conversation History ---`
-            };
+    if (otherUserHistory && otherUserHistory.length > 0) {
+      const historyText = otherUserHistory.map(h => {
+        // Ensure parts and text exist to prevent errors
+        const content = h.parts?.map(p => p.text).join(' ') || '';
+        return `${h.role}: ${content}`;
+      }).join('\n');
+      const historyContextPart = {
+        text: `\n\n--- Additional Context: Conversation History ---\nFor my next response, I must consider my previous conversation history with the user "${mentionedUser.username}". Here is that history:\n\n${historyText}\n\n--- End of Conversation History ---`
+      };
 
-            parts.unshift(historyContextPart);
-            console.log(`Successfully loaded and prepended chat history for ${mentionedUser.username}.`);
-        } else {
-            console.log(`No chat history found for the mentioned user: ${mentionedUser.username}`);
-        }
-    } catch (error) {
-        console.log(`Could not find or load a chat history for the mentioned user: ${mentionedUser.username}`);
+      parts.unshift(historyContextPart);
+      console.log(`Successfully loaded and prepended chat history for ${mentionedUser.username}.`);
+    } else {
+      console.log(`No chat history found via getHistory() for the mentioned user: ${mentionedUser.username}`);
     }
 
-    // 3. Try to load the mentioned user's PERSONALITY INSTRUCTIONS.
-    try {
-        const personalityInstructions = state.customInstructions[mentionedUser.id];
-        if (personalityInstructions && personalityInstructions.trim()!== '') {
-            const instructionContextPart = {
-                text: `\n\n--- Additional Context: User's Personality Instructions ---\nFor my next response, I must also consider the personality instructions given to me by "${mentionedUser.username}". Here are those instructions:\n\n"${personalityInstructions}"\n\n--- End of Personality Instructions ---`
-            };
+    // --- PERSONALITY INSTRUCTIONS LOOKUP (This part is correct) ---
+    const personalityInstructions = state.customInstructions[mentionedUser.id];
+    if (personalityInstructions && personalityInstructions.trim() !== '') {
+      const instructionContextPart = {
+        text: `\n\n--- Additional Context: User's Personality Instructions ---\nFor my next response, I must also consider the personality instructions given to me by "${mentionedUser.username}". Here are those instructions:\n\n"${personalityInstructions}"\n\n--- End of Personality Instructions ---`
+      };
 
-            parts.unshift(instructionContextPart);
-            console.log(`Successfully loaded and prepended personality instructions for ${mentionedUser.username}.`);
-        } else {
-            console.log(`No custom instructions found for the mentioned user: ${mentionedUser.username}`);
-        }
-    } catch (error) {
-        console.log(`Could not load personality instructions for the mentioned user: ${mentionedUser.username}`);
+      parts.unshift(instructionContextPart);
+      console.log(`Successfully loaded and prepended personality instructions for ${mentionedUser.username}.`);
+    } else {
+      console.log(`No custom instructions found for the mentioned user: ${mentionedUser.username}`);
     }
-}
+  }
 
-// --- END OF NEW LOGIC ---
+  // --- END OF NEW LOGIC ---
+
   let instructions;
   if (guildId) {
     if (state.channelWideChatHistory[channelId]) {
@@ -606,44 +602,44 @@ if (mentionedUser) {
     infoStr = `\nYou are currently engaging with users in the ${message.guild.name} Discord server.\n\n## Current User Information\nUsername: \`${userInfo.username}\`\nDisplay Name: \`${userInfo.displayName}\``;
   }
 
- // --- NEW LOGIC TO PREPEND DEFAULT PERSONALITY ---
+  // --- NEW LOGIC TO PREPEND DEFAULT PERSONALITY ---
 
-// 1. Start with the base defaultPersonality as the foundation for all interactions.
-let finalInstructions = defaultPersonality;
+  // 1. Start with the base defaultPersonality as the foundation for all interactions.
+  let finalInstructions = defaultPersonality;
 
-// 2. If custom instructions exist (from user, channel, or server settings), append them.
-if (instructions) {
-  finalInstructions += "\n\n---\n\n" + instructions;
-}
+  // 2. If custom instructions exist (from user, channel, or server settings), append them.
+  if (instructions) {
+    finalInstructions += "\n\n---\n\n" + instructions;
+  }
 
-// 3. Append server and user info if applicable, just like before.
-const isServerChatHistoryEnabled = guildId? state.serverSettings[guildId]?.serverChatHistory : false;
-if (isServerChatHistoryEnabled && infoStr) {
-  finalInstructions += infoStr;
-}
+  // 3. Append server and user info if applicable, just like before.
+  const isServerChatHistoryEnabled = guildId ? state.serverSettings[guildId]?.serverChatHistory : false;
+  if (isServerChatHistoryEnabled && infoStr) {
+    finalInstructions += infoStr;
+  }
 
-// This part of the logic remains the same.
-const isChannelChatHistoryEnabled = guildId? state.channelWideChatHistory[channelId] : false;
-const historyId = isChannelChatHistoryEnabled? (isServerChatHistoryEnabled? guildId : channelId) : userId;
+  // This part of the logic remains the same.
+  const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
+  const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
 
-// --- END OF NEW LOGIC ---
+  // --- END OF NEW LOGIC ---
 
   // Always enable all three tools: Google Search, URL Context, and Code Execution.
   const tools = [
     { googleSearch: {} },
     { urlContext: {} },
-//Disabled Code execution for now as it crashes the system.
+    //Disabled Code execution for now as it crashes the system.
   ];
 
   // Create chat with new Google GenAI API format
   // Create chat with new Google GenAI API format
-const chat = genAI.chats.create({
-  model: MODEL,
-  config: {
-    systemInstruction: {
-      role: "system",
-      parts: [{ text: finalInstructions }] // The fallback is no longer needed.
-    },
+  const chat = genAI.chats.create({
+    model: MODEL,
+    config: {
+      systemInstruction: {
+        role: "system",
+        parts: [{ text: finalInstructions }] // The fallback is no longer needed.
+      },
       ...generationConfig,
       safetySettings,
       tools
@@ -2111,26 +2107,26 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   const updateMessage = () => {
     if (stopGeneration) {
-        return;
+      return;
     }
     if (tempResponse.trim() === "") {
-        botMessage.edit({
-            content: '...'
-        });
+      botMessage.edit({
+        content: '...'
+      });
     } else if (userResponsePreference === 'Embedded') {
-        updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
+      updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
     } else {
-        // Add a safety check to prevent crashing on long streaming updates
-        if (tempResponse.length < 1950) {
-            botMessage.edit({
-                content: tempResponse,
-                embeds:[]
-            });
-        }
+      // Add a safety check to prevent crashing on long streaming updates
+      if (tempResponse.length < 1950) {
+        botMessage.edit({
+          content: tempResponse,
+          embeds: []
+        });
+      }
     }
     clearTimeout(updateTimeout);
     updateTimeout = null;
-};
+  };
 
   while (attempts > 0 && !stopGeneration) {
     try {
