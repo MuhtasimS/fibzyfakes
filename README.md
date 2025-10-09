@@ -12,7 +12,7 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 - **Updated privacy and consent protocol**
 - **Personalized personalities!**
 - **Improved and foolproofed button-based UI**
-- Tons of other features that I coded for over 270 hours so far!!!
+- Tons of other features that I coded for over 270 hours so far!!! Vastly superior everything than before!
 
 ## Features
 
