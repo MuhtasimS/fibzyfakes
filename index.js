@@ -536,30 +536,31 @@ async function handleTextMessage(message) {
     return console.error('Error initialising message', error);
   }
 
-  // --- NEW LOGIC TO CROSS-REFERENCE CONVERSATIONS & INSTRUCTIONS (v3) ---
+  // --- NEW LOGIC TO CROSS-REFERENCE CONVERSATIONS & INSTRUCTIONS (v4) ---
 
-  // 1. Detect if any users were mentioned in the message (and ignore mentions of the bot itself).
   const mentionedUser = message.mentions.users.find(user => !user.bot);
 
   if (mentionedUser) {
     console.log(`Referenced user detected: ${mentionedUser.username} (ID: ${mentionedUser.id})`);
 
     // --- CHAT HISTORY LOOKUP ---
-    // Use the bot's own getHistory() function, as it knows the correct way to access the state.
     const otherUserHistory = getHistory(mentionedUser.id);
 
     if (otherUserHistory && otherUserHistory.length > 0) {
-      const historyText = otherUserHistory.map(h => {
-        // Ensure parts and text exist to prevent errors
+      // TRUNCATION: Only take the last 20 messages from the other user's history.
+      const RECENT_MESSAGES_LIMIT = 20;
+      const truncatedHistory = otherUserHistory.slice(-RECENT_MESSAGES_LIMIT);
+
+      const historyText = truncatedHistory.map(h => {
         const content = h.parts?.map(p => p.text).join(' ') || '';
         return `${h.role}: ${content}`;
       }).join('\n');
       const historyContextPart = {
-        text: `\n\n--- Additional Context: Conversation History ---\nFor my next response, I must consider my previous conversation history with the user "${mentionedUser.username}". Here is that history:\n\n${historyText}\n\n--- End of Conversation History ---`
+        text: `\n\n--- Additional Context: Conversation History ---\nFor my next response, I must consider the last few messages from my conversation history with the user "${mentionedUser.username}". Here is that history:\n\n${historyText}\n\n--- End of Conversation History ---`
       };
 
       parts.unshift(historyContextPart);
-      console.log(`Successfully loaded and prepended chat history for ${mentionedUser.username}.`);
+      console.log(`Successfully loaded and prepended the last ${truncatedHistory.length} messages for ${mentionedUser.username}.`);
     } else {
       console.log(`No chat history found via getHistory() for the mentioned user: ${mentionedUser.username}`);
     }
@@ -577,8 +578,8 @@ async function handleTextMessage(message) {
       console.log(`No custom instructions found for the mentioned user: ${mentionedUser.username}`);
     }
   }
-
   // --- END OF NEW LOGIC ---
+
 
   let instructions;
   if (guildId) {
@@ -647,7 +648,7 @@ async function handleTextMessage(message) {
     history: getHistory(historyId)
   });
 
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId);
+  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser);
 }
 
 function hasSupportedAttachments(message) {
@@ -2025,7 +2026,7 @@ async function addSettingsButton(botMessage) {
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId) {
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser) {
   const userId = originalMessage.author.id;
   const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
   const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
@@ -2133,10 +2134,32 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       let finalResponse = '';
       let isLargeResponse = false;
       const newHistory = [];
+
+
+      // --- NEW LOGIC TO CREATE PLACEHOLDER FOR SAVED HISTORY ---
+
+      // Create a clean version of the user's prompt for saving.
+      const userPartsForHistory = parts.map(part => {
+        // Check if this part is one of our special context blocks.
+        if (part.text && part.text.includes('--- Additional Context')) {
+          // If it is, replace it with a simple placeholder string.
+          return { text: `[Context for user @${mentionedUser.username} was included in this turn.]` };
+        }
+        // Otherwise, keep the original part (the user's actual message).
+        return part;
+      }).filter((part, index, self) =>
+        // Remove duplicate placeholders if both history and instructions were found.
+        index === self.findIndex(p => p.text === part.text)
+      );
+
       newHistory.push({
         role: 'user',
-        content: parts
+        content: userPartsForHistory
       });
+
+      // --- END OF NEW LOGIC ---
+
+
       async function getResponse(parts) {
         let newResponse = '';
         const messageResult = await chat.sendMessageStream({
