@@ -1,35 +1,27 @@
-# Gemini Discord Bot
+# Fibz
 
-A Discord bot leveraging Google Gemini for advanced conversation, content understanding, image/video/audio recognition, and more.
-
----
-
-## NEW AND IMPROVED FEATURES
-- **Now powered by 2.5 Gemini Pro!**
-- **Uses Google Cloud Vertex AI Platform**
-- **Enterprise-grade security and authentication**
-- 
-- **Super duper advanced smart Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx, but can't write code at the moment) Can understand voice messages!
-- **PERSISTENT, PERMANENT, REFERENCEABLE MEMORY!!!** It can now remember stuff and if it can't, it can look up archives!!!
-- **Can recognize different people within the same conversation!**
-- **Core Identity and Rules**
-- **Updated privacy and consent protocol**
-- **Personalized personalities!**
-- **Improved and foolproofed button-based UI**
-- **Ability to override the 2000 character limit when instructed to**
-- Tons of other features that I coded for over 270 hours so far!!! Vastly superior everything than before!
+A Discord bot leveraging Google Cloud Vertex AI (Gemini 2.5 Pro) for advanced conversation, content understanding, image/video/audio recognition, voice message comprehension, and more — with enterprise-grade security and a vastly improved UX.
 
 ## Features
 
-- **Conversational AI** powered by Google Gemini (Gemini-2.5-Flash)
-- **Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx, and code/text files)
-- **Custom personalities per user, channel, or server**
+- **Now powered by 2.5 Gemini Pro!** (via Vertex AI)
+- **Uses Google Cloud Vertex AI Platform**
+- **Enterprise-grade security and authentication**
+- **WAY better user experience and interface**
+- **Super duper advanced smart Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx; can understand voice messages; full multimodal support; **can’t write code at the moment**)
+- **PERSISTENT, PERMANENT, REFERENCEABLE MEMORY!!!** (Fibz remembers and can look up archives when needed)
+- **Can recognize different people within the same conversation!** (multi-user attribution/awareness)
+- **Core Identity and Rules** (configurable behavior guardrails)
+- **Updated privacy and consent protocol**
+- **Personalized personalities!** (per user, channel, or server)
+- **Improved and foolproofed button-based UI**
+- **Ability to override the 2000 character limit when instructed to** (auto-splitting/attachments)
 - **Server and channel-wide chat history** options
 - **Admin controls** for blacklisting/whitelisting users
 - **Downloadable conversation/message history**
-- **Multiple AI tools:** Google Search, code execution, and function calling
+- **Multiple AI tools:** integrated tool use (e.g., Google Search)
 - **Status monitoring** (RAM, CPU, and reset timer)
-- **Slash command and button-based UI**
+- Tons of other features built over **270+ hours** — vastly superior everything than before!
 
 ---
 
@@ -39,14 +31,16 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 
 - Node.js v20+ recommended
 - Discord bot token ([create here](https://discord.com/developers/applications))
-- Google Gemini API key ([get one here](https://aistudio.google.com/app/apikey))
+- Google Cloud project with Vertex AI enabled  
+  - Service Account with appropriate IAM roles (e.g., Vertex AI User)  
+  - Local credentials via `GOOGLE_APPLICATION_CREDENTIALS` (or Application Default Credentials)
 
 ### Setup
 
 1. **Clone the repo:**
     ```bash
-    git clone https://github.com/hihumanzone/Gemini-Discord-Bot.git
-    cd Gemini-Discord-Bot
+    git clone <YOUR_REPO_URL>
+    cd Fibz
     ```
 
 2. **Install dependencies:**
@@ -56,10 +50,15 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 
 3. **Configure environment variables:**
     - Copy `example.env` to `.env`
-    - Fill in your Discord and Google API tokens:
+    - Fill in your tokens and Vertex AI config:
       ```
       DISCORD_BOT_TOKEN=your_discord_bot_token
-      GOOGLE_API_KEY=your_google_api_key
+
+      # Google Cloud / Vertex AI
+      GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service_account.json
+      VERTEX_PROJECT_ID=your_gcp_project_id
+      VERTEX_LOCATION=us-central1
+      VERTEX_MODEL=gemini-2.5-pro
       ```
 
 4. **Start the bot:**
@@ -72,9 +71,10 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 ## Usage
 
 - **Invite the bot to your Discord server.**
-- Use `/settings` to configure personal or channel preferences.
-- Use `/server_settings` for server-wide admin controls.
-- Upload supported files or image/video/audio files and ask the bot about them.
+- Use `/settings` to configure personal or channel preferences, privacy/consent, memory, and personalities.
+- Use `/server_settings` for server-wide admin controls (core identity/rules, chat history defaults, etc.).
+- Upload supported files, images/videos/audios, or **voice messages**, then ask the bot about them.
+- Ask Fibz to “go long” when you need **responses beyond 2000 characters** (it will auto-split or attach as needed).
 - Use slash commands:
     - `/respond_to_all enabled:true|false` – Bot responds to every message in a channel
     - `/clear_memory` – Clear your personal conversation history
@@ -87,13 +87,15 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 
 ## Customization
 
-- Modify `config.js` to change default personalities, activities, colors, and feature toggles.
-- Persistent data (chat history, settings, blacklists, etc.) is stored in the `config` directory.
+- Modify `config.js` to change **core identity and rules**, default personalities/activities/colors, feature toggles, and privacy defaults.
+- Persistent data (chat history, **long-term memory/archives**, settings, blacklists, etc.) is stored in the `config` (and/or designated data) directory. Consider external/cloud storage for durability.
 
 ---
 
 ## Admin & Security
 
+- **Enterprise-grade security** using Google Cloud Vertex AI with IAM-scoped service accounts and encrypted transport/storage.
+- **Updated privacy and consent protocol:** per-user and per-server controls for memory, retention, and data use.
 - Only server admins can use admin commands (blacklist, whitelist, server settings).
 - Blacklisted users cannot interact with the bot.
 
@@ -101,11 +103,7 @@ A Discord bot leveraging Google Gemini for advanced conversation, content unders
 
 ## Notes
 
-- The bot stores chat history and settings locally. For production use, consider using persistent cloud storage.
+- Fibz maintains **persistent, referenceable memory**. Use `/clear_memory` or adjust settings if you prefer ephemeral sessions.
+- The bot stores chat history/settings locally by default. For production, use durable/cloud storage.
+- **Code generation is currently disabled** (“can’t write code at the moment”).
 - **Do not commit your `.env` with secrets.**
-
----
-
-## License
-
-[MIT](LICENSE.md)
