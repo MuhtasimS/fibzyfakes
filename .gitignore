@@ -1,5 +1,5 @@
 # Node.js dependencies
-node_modules/
+node_modules
 
 # Environment variables file
 .env
@@ -9,3 +9,6 @@ service-account-key.json
 
 # chat logs
 config
+
+# database
+chroma_data
