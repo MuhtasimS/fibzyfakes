@@ -593,37 +593,72 @@ export async function updateChatHistory(historyId, userMessageParts, modelRespon
 }
 
 // --- NEW: Retrieve relevant memories from ChromaDB ---
-export async function retrieveMemories(queryText, historyId, resultCount = 5) {
+// --- ENHANCED & USER-AWARE: Retrieves memories from messages, entities, and self_context ---
+export async function retrieveMemories(queryText, historyId, userId, resultCount = 4) {
     try {
         const messagesCollection = await chroma.getCollection({ name: "messages" });
+        const entitiesCollection = await chroma.getCollection({ name: "entities" });
+        const selfContextCollection = await chroma.getCollection({ name: "self_context" });
 
-        // Query the collection to find the most relevant documents
-        const results = await messagesCollection.query({
-            queryTexts: [queryText],
-            nResults: resultCount,
-            where: { "historyId": historyId } // IMPORTANT: Only search within the current user/server's history
-        });
+        // --- THE FIX: Create a more specific filter for messages ---
+        // This filter ensures we only get messages from the current user within the shared channel history.
+        const messageFilter = {
+            "$and": [
+                { "historyId": historyId },
+                { "user_id": userId }
+            ]
+        };
 
-        // If no results, return null
-        if (results.documents[0].length === 0) {
-            console.log(`No relevant memories found for historyId: ${historyId}`);
+        const [messageResults, entityResults, selfContextResults] = await Promise.allSettled([
+            messagesCollection.query({
+                queryTexts: [queryText],
+                nResults: resultCount,
+                where: messageFilter // Use the new, more specific filter here
+            }),
+            entitiesCollection.query({
+                queryTexts: [queryText],
+                nResults: 3
+            }),
+            selfContextCollection.query({
+                queryTexts: [queryText],
+                nResults: 2
+            })
+        ]);
+
+        let contextParts = [];
+
+        if (messageResults.status === 'fulfilled' && messageResults.value.documents[0].length > 0) {
+            const memories = messageResults.value.documents[0].map((doc, index) => {
+                const role = messageResults.value.metadatas[0][index].role;
+                return `${role === 'user' ? 'You previously said' : 'I previously said'}: "${doc}"`;
+            }).join('\n');
+            contextParts.push(`--- Relevant Conversation History ---\n${memories}`);
+        }
+
+        if (entityResults.status === 'fulfilled' && entityResults.value.documents[0].length > 0) {
+            const entities = entityResults.value.documents[0].join(', ');
+            contextParts.push(`--- Related Known Entities/Concepts ---\n${entities}`);
+        }
+
+        if (selfContextResults.status === 'fulfilled' && selfContextResults.value.documents[0].length > 0) {
+            const selfNotes = selfContextResults.value.documents[0].join('\n');
+            contextParts.push(`--- Relevant Notes About Myself ---\n${selfNotes}`);
+        }
+
+        if (contextParts.length === 0) {
+            console.log(`No relevant memories found for user ${userId} in history ${historyId}`);
             return null;
         }
 
-        // Format the results into a clean string for the LLM
-        const memories = results.documents[0].map((doc, index) => {
-            const role = results.metadatas[0][index].role;
-            return `${role === 'user' ? 'You previously said' : 'I previously said'}: "${doc}"`;
-        }).join('\n');
-
-        console.log(`Retrieved ${results.documents[0].length} memories for historyId: ${historyId}`);
-        return memories;
+        console.log(`Retrieved context from ${contextParts.length} sources for user ${userId}.`);
+        return contextParts.join('\n\n');
 
     } catch (error) {
         console.error('Error retrieving memories from ChromaDB:', error);
         return null;
     }
 }
+
 
 // --- FINAL CORRECTED VERSION USING THE DIRECT API CALL ---
 // Using: import { GoogleGenAI, createUserContent } from "@google/genai";

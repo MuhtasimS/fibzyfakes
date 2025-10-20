@@ -633,7 +633,7 @@ async function handleTextMessage(message) {
   // --- END OF NEW LOGIC ---
 
   // --- NEW: Retrieve and add conversation context from ChromaDB ---
-  const memoryContext = await retrieveMemories(messageContent, historyId);
+  const memoryContext = await retrieveMemories(messageContent, historyId, userId);
   if (memoryContext) {
     const memoryContextPart = {
       text: `--- Relevant Conversation History ---\n${memoryContext}\n--- End of History ---`
