@@ -12,3 +12,5 @@ config
 
 # database
 chroma_data
+
+codexPrompt.txt

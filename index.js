@@ -53,7 +53,8 @@ import {
   getHistory,
   updateChatHistory,
   getUserResponsePreference,
-  initializeBlacklistForGuild
+  initializeBlacklistForGuild,
+  retrieveMemories
 } from './botManager.js';
 
 
@@ -625,6 +626,17 @@ async function handleTextMessage(message) {
 
   // --- END OF NEW LOGIC ---
 
+    // --- NEW: Retrieve and add conversation context from ChromaDB ---
+  const memoryContext = await retrieveMemories(messageContent, historyId);
+  if (memoryContext) {
+    const memoryContextPart = {
+      text: `--- Relevant Conversation History ---\n${memoryContext}\n--- End of History ---`
+    };
+    parts.unshift(memoryContextPart); // Add memories to the start of the prompt
+    console.log('Added relevant conversation history to the prompt.');
+  }
+  // --- END OF NEW CODE ---
+
   // Always enable all three tools: Google Search, URL Context, and Code Execution.
   const tools = [
     { googleSearch: {} },
@@ -645,7 +657,6 @@ async function handleTextMessage(message) {
       safetySettings,
       tools
     },
-    history: getHistory(historyId)
   });
 
   await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser);
@@ -2231,9 +2242,10 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         }
       }
 
+      // --- This is the NEW code block ---
       await chatHistoryLock.runExclusive(async () => {
-        updateChatHistory(historyId, newHistory, botMessage.id);
-        await saveStateToFile();
+        // We now call our new ChromaDB-focused function
+        await updateChatHistory(historyId, userPartsForHistory, finalResponse, originalMessage);
       });
       break;
     } catch (error) {

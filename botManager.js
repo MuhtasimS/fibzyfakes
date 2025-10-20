@@ -20,6 +20,7 @@ import {
   fileURLToPath
 } from 'url';
 import config from './config.js';
+import { ChromaClient } from 'chromadb';
 
 // --- Core Client and API Initialization ---
 // Using new Google GenAI library instead of deprecated @google/generative-ai
@@ -42,6 +43,10 @@ export const genAI = new GoogleGenAI({
 });
 export { createUserContent, createPartFromUri };
 export const token = process.env.DISCORD_BOT_TOKEN;
+
+// Initialize ChromaDB Client
+export const chroma = new ChromaClient();
+console.log('ChromaDB client initialized.');
 
 // --- Concurrency and Request Management ---
 
@@ -206,6 +211,83 @@ export async function saveStateToFile() {
   }
 }
 
+// --- FINAL CORRECTED MIGRATION FUNCTION ---
+async function migrateJsonHistoryToChroma() {
+    console.log('Checking if chat history migration to ChromaDB is needed...');
+
+    try {
+        const messagesCollection = await chroma.getCollection({ name: "messages" });
+
+        const count = await messagesCollection.count();
+        if (count > 0) {
+            console.log('ChromaDB "messages" collection is not empty. Migration skipped.');
+            return;
+        }
+
+        console.log('Starting migration of JSON chat histories to ChromaDB...');
+        let totalMessagesMigrated = 0;
+
+        // Loop 1: Iterate over the main history object (keys are user/server IDs from filenames)
+        for (const historyId in chatHistories) {
+            const subIdEntries = chatHistories[historyId]; // This is the object like {"1425...": [...], "1426...": [...]}
+
+            // Safety check to ensure it's a valid object to loop through
+            if (typeof subIdEntries !== 'object' || subIdEntries === null) {
+                console.warn(`- Skipping non-object history for ID: ${historyId}`);
+                continue;
+            }
+
+            // Loop 2: Iterate over the keys of the inner object (the sub-conversation IDs)
+            for (const subId in subIdEntries) {
+                const messageArray = subIdEntries[subId]; // This is the actual array of messages
+
+                // Final safety check to make sure we have an array
+                if (!Array.isArray(messageArray)) {
+                    console.warn(`- Skipping non-array entry for subId: ${subId} under historyId: ${historyId}`);
+                    continue;
+                }
+
+                const documents = [];
+                const metadatas = [];
+                const ids = [];
+
+                for (const [index, message] of messageArray.entries()) {
+                    if (!message.content || !Array.isArray(message.content)) continue;
+
+                    const content = message.content.map(part => part.text).join('\n').trim();
+                    if (!content) continue;
+
+                    documents.push(content);
+                    metadatas.push({
+                        historyId: historyId, // The main user/server ID
+                        subId: subId,         // The specific conversation/thread ID
+                        role: message.role,
+                        migrated_at: Date.now()
+                    });
+                    // Create a more robust unique ID
+                    ids.push(`migrated-${historyId}-${subId}-${index}`);
+                }
+
+                if (documents.length > 0) {
+                    await messagesCollection.add({
+                        ids: ids,
+                        documents: documents,
+                        metadatas: metadatas,
+                    });
+                    console.log(`- Migrated ${documents.length} messages for ${historyId} (subId: ${subId})`);
+                    totalMessagesMigrated += documents.length;
+                }
+            }
+        }
+
+        console.log(`Migration complete! Total messages moved to ChromaDB: ${totalMessagesMigrated}`);
+
+    } catch (error) {
+        console.error('An error occurred during ChromaDB migration:', error);
+    }
+}
+// --- END OF FINAL CORRECTED MIGRATION FUNCTION ---
+
 async function loadStateFromFile() {
   try {
     await fs.mkdir(CONFIG_DIR, {
@@ -300,6 +382,48 @@ function scheduleDailyReset() {
 export async function initialize() {
   scheduleDailyReset();
   await loadStateFromFile();
+  console.log('Bot state loaded from files.');
+
+  // --- NEW: Initialize ChromaDB Collections ---
+  try {
+    console.log('Initializing ChromaDB collections...');
+
+    // Collection for regular chat messages
+    const messagesCollection = await chroma.getOrCreateCollection({
+      name: "messages",
+      metadata: { "hnsw:space": "cosine" } // Using cosine for semantic similarity
+    });
+    console.log(`- "${messagesCollection.name}" collection ready.`);
+
+    // Collection for the bot's own context and identity
+    const selfContextCollection = await chroma.getOrCreateCollection({
+      name: "self_context",
+      metadata: { "hnsw:space": "cosine" }
+    });
+    console.log(`- "${selfContextCollection.name}" collection ready.`);
+
+    // Collection for recognized entities (people, places, topics)
+    const entitiesCollection = await chroma.getOrCreateCollection({
+      name: "entities",
+      metadata: { "hnsw:space": "cosine" }
+    });
+    console.log(`- "${entitiesCollection.name}" collection ready.`);
+
+    // Collection for compressed/summarized old conversations
+    const archivesCollection = await chroma.getOrCreateCollection({
+      name: "archives",
+      metadata: { "hnsw:space": "cosine" }
+    });
+    console.log(`- "${archivesCollection.name}" collection ready.`);
+
+    console.log('ChromaDB collections are set up.');
+    // --- NEW: Run the migration ---
+    await migrateJsonHistoryToChroma();
+    // --- END OF NEW CODE ---
+  } catch (error) {
+    console.error('Error initializing ChromaDB collections:', error);
+  }
+  // --- END OF NEW CODE ---
   console.log('Bot state loaded and initialized.');
 }
 
@@ -326,16 +450,96 @@ export function getHistory(id) {
   });
 }
 
-export function updateChatHistory(id, newHistory, messagesId) {
-  if (!chatHistories[id]) {
-    chatHistories[id] = {};
-  }
+// --- NEW: Save new messages directly to ChromaDB ---
+export async function updateChatHistory(historyId, userMessageParts, modelResponseContent, discordMessage) {
+    try {
+        const messagesCollection = await chroma.getCollection({ name: "messages" });
 
-  if (!chatHistories[id][messagesId]) {
-    chatHistories[id][messagesId] = [];
-  }
+        const userContent = userMessageParts.map(part => part.text).join('\n').trim();
+        const modelContent = modelResponseContent.trim();
+        const timestamp = Date.now();
 
-  chatHistories[id][messagesId] = [...chatHistories[id][messagesId], ...newHistory];
+        // We need to get the bot's user object to use its ID and name
+        const botUser = client.user;
+
+        // Prepare the user's message
+        const userDoc = {
+            id: `msg-user-${discordMessage.id}`,
+            document: userContent,
+            metadata: {
+                historyId: historyId,
+                guild_id: discordMessage.guild?.id || 'DM',
+                channel_id: discordMessage.channel.id,
+                user_id: discordMessage.author.id,
+                username: discordMessage.author.username,
+                role: 'user',
+                created_at: discordMessage.createdTimestamp,
+                reply_to: discordMessage.reference?.messageId || ''
+                // We will add more metadata like modality, persona, etc. later
+            }
+        };
+
+        // Prepare the bot's (model) response
+        const modelDoc = {
+            id: `msg-model-${discordMessage.id}`, // Link to the user message ID
+            document: modelContent,
+            metadata: {
+                historyId: historyId,
+                guild_id: discordMessage.guild?.id || 'DM',
+                channel_id: discordMessage.channel.id,
+                user_id: botUser.id,
+                username: botUser.username,
+                role: 'model',
+                created_at: timestamp,
+                reply_to: discordMessage.id
+            }
+        };
+
+        // Add both documents to the collection at the same time
+        await messagesCollection.add({
+            ids: [userDoc.id, modelDoc.id],
+            documents: [userDoc.document, modelDoc.document],
+            metadatas: [userDoc.metadata, modelDoc.metadata]
+        });
+
+        console.log(`Saved conversation for historyId ${historyId} to ChromaDB.`);
+
+    } catch (error) {
+        console.error('Error updating chat history in ChromaDB:', error);
+    }
+}
+
+// --- NEW: Retrieve relevant memories from ChromaDB ---
+export async function retrieveMemories(queryText, historyId, resultCount = 5) {
+    try {
+        const messagesCollection = await chroma.getCollection({ name: "messages" });
+
+        // Query the collection to find the most relevant documents
+        const results = await messagesCollection.query({
+            queryTexts: [queryText],
+            nResults: resultCount,
+            where: { "historyId": historyId } // IMPORTANT: Only search within the current user/server's history
+        });
+
+        // If no results, return null
+        if (results.documents[0].length === 0) {
+            console.log(`No relevant memories found for historyId: ${historyId}`);
+            return null;
+        }
+
+        // Format the results into a clean string for the LLM
+        const memories = results.documents[0].map((doc, index) => {
+            const role = results.metadatas[0][index].role;
+            return `${role === 'user' ? 'You previously said' : 'I previously said'}: "${doc}"`;
+        }).join('\n');
+
+        console.log(`Retrieved ${results.documents[0].length} memories for historyId: ${historyId}`);
+        return memories;
+
+    } catch (error) {
+        console.error('Error retrieving memories from ChromaDB:', error);
+        return null;
+    }
 }
 
 export function getUserResponsePreference(userId) {
@@ -350,5 +554,5 @@ export function initializeBlacklistForGuild(guildId) {
     if (!state.serverSettings[guildId]) {
       state.serverSettings[guildId] = config.defaultServerSettings;
     }
-  } catch (error) {}
+  } catch (error) { }
 }

@@ -1,9 +1,11 @@
 {
   "type": "module",
   "dependencies": {
+    "@chroma-core/default-embed": "^0.1.8",
     "@google-cloud/storage": "^7.17.1",
     "@google/genai": "*",
     "axios": "*",
+    "chromadb": "^3.0.17",
     "discord.js": "*",
     "dotenv": "*",
     "fs": "*",
