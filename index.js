@@ -54,9 +54,12 @@ import {
   updateChatHistory,
   getUserResponsePreference,
   initializeBlacklistForGuild,
-  retrieveMemories
+  retrieveMemories, 
+  chroma
 } from './botManager.js';
-
+// Import the package.json file to access the bot's version
+import pkg from './package.json' with { type: 'json' };
+const BOT_VERSION = pkg.version;
 
 initialize().catch(console.error);
 
@@ -241,7 +244,8 @@ async function handleCommandInteraction(interaction) {
     clear_memory: handleClearMemoryCommand,
     settings: showSettings,
     server_settings: showDashboard,
-    status: handleStatusCommand
+    status: handleStatusCommand,
+    remember: handleRememberCommand
   };
 
   const handler = commandHandlers[interaction.commandName];
@@ -474,6 +478,7 @@ async function editShowSettings(interaction) {
 // <=====[Messages Handling]=====>
 
 async function handleTextMessage(message) {
+  const startTime = Date.now();
   const botId = client.user.id;
   const userId = message.author.id;
   const guildId = message.guild?.id;
@@ -626,7 +631,7 @@ async function handleTextMessage(message) {
 
   // --- END OF NEW LOGIC ---
 
-    // --- NEW: Retrieve and add conversation context from ChromaDB ---
+  // --- NEW: Retrieve and add conversation context from ChromaDB ---
   const memoryContext = await retrieveMemories(messageContent, historyId);
   if (memoryContext) {
     const memoryContextPart = {
@@ -659,7 +664,7 @@ async function handleTextMessage(message) {
     },
   });
 
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser);
+  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser, startTime, finalInstructions, BOT_VERSION);
 }
 
 function hasSupportedAttachments(message) {
@@ -1094,6 +1099,46 @@ async function handleStatusCommand(interaction) {
       });
     }
   }
+}
+
+// --- NEW: Handler for the /remember command ---
+async function handleRememberCommand(interaction) {
+    // Defer reply to give us time to process
+    await interaction.deferReply({ ephemeral: true }); // Ephemeral means only you can see the reply
+
+    const information = interaction.options.getString('information');
+    const userId = interaction.user.id;
+
+    try {
+        const selfContextCollection = await chroma.getCollection({ name: "self_context" });
+
+        const docId = `self-context-${Date.now()}`;
+        const timestamp = new Date().toISOString();
+
+        await selfContextCollection.add({
+            ids: [docId],
+            documents: [information],
+            metadatas: [{
+                added_by: userId,
+                created_at: timestamp
+            }]
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('Self-Context Memory Added')
+            .setDescription(`I'll remember this:\n> "${information}"`);
+
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('Error adding to self-context memory:', error);
+        const errorEmbed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('Error')
+            .setDescription('I failed to add that to my self-context memory. Please check the logs.');
+        await interaction.editReply({ embeds: [errorEmbed] });
+    }
 }
 
 async function handleBlacklistCommand(interaction) {
@@ -2037,7 +2082,7 @@ async function addSettingsButton(botMessage) {
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser) {
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser, startTime, finalInstructions, botVersion) {
   const userId = originalMessage.author.id;
   const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
   const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
@@ -2244,8 +2289,10 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
       // --- This is the NEW code block ---
       await chatHistoryLock.runExclusive(async () => {
-        // We now call our new ChromaDB-focused function
-        await updateChatHistory(historyId, userPartsForHistory, finalResponse, originalMessage);
+        // Calculate the total time elapsed
+        const latency = Date.now() - startTime;
+        // We now call our new ChromaDB-focused function, passing the latency
+        await updateChatHistory(historyId, userPartsForHistory, finalResponse, originalMessage, latency, finalInstructions, botVersion);
       });
       break;
     } catch (error) {

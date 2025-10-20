@@ -451,16 +451,20 @@ export function getHistory(id) {
 }
 
 // --- NEW: Save new messages directly to ChromaDB ---
-export async function updateChatHistory(historyId, userMessageParts, modelResponseContent, discordMessage) {
+// --- FINAL VERSION: Saves all metadata including version and token estimates ---
+export async function updateChatHistory(historyId, userMessageParts, modelResponseContent, discordMessage, latency, personaInstructions, botVersion) {
     try {
         const messagesCollection = await chroma.getCollection({ name: "messages" });
 
         const userContent = userMessageParts.map(part => part.text).join('\n').trim();
         const modelContent = modelResponseContent.trim();
         const timestamp = Date.now();
-
-        // We need to get the bot's user object to use its ID and name
         const botUser = client.user;
+        const messageModality = discordMessage.attachments.size > 0 ? 'multimodal' : 'text';
+
+        // --- NEW: Estimate token counts (a common rule of thumb is 1 token ≈ 4 characters) ---
+        const userTokenCount = Math.ceil(userContent.length / 4);
+        const modelTokenCount = Math.ceil(modelContent.length / 4);
 
         // Prepare the user's message
         const userDoc = {
@@ -474,14 +478,18 @@ export async function updateChatHistory(historyId, userMessageParts, modelRespon
                 username: discordMessage.author.username,
                 role: 'user',
                 created_at: discordMessage.createdTimestamp,
-                reply_to: discordMessage.reference?.messageId || ''
-                // We will add more metadata like modality, persona, etc. later
+                reply_to: discordMessage.reference?.messageId || '',
+                modality: messageModality,
+                latency: 0,
+                persona: '',
+                version: botVersion,
+                token_count: userTokenCount
             }
         };
 
         // Prepare the bot's (model) response
         const modelDoc = {
-            id: `msg-model-${discordMessage.id}`, // Link to the user message ID
+            id: `msg-model-${discordMessage.id}`,
             document: modelContent,
             metadata: {
                 historyId: historyId,
@@ -491,18 +499,22 @@ export async function updateChatHistory(historyId, userMessageParts, modelRespon
                 username: botUser.username,
                 role: 'model',
                 created_at: timestamp,
-                reply_to: discordMessage.id
+                reply_to: discordMessage.id,
+                modality: 'text',
+                latency: latency,
+                persona: personaInstructions,
+                version: botVersion,
+                token_count: modelTokenCount
             }
         };
 
-        // Add both documents to the collection at the same time
         await messagesCollection.add({
             ids: [userDoc.id, modelDoc.id],
             documents: [userDoc.document, modelDoc.document],
             metadatas: [userDoc.metadata, modelDoc.metadata]
         });
 
-        console.log(`Saved conversation for historyId ${historyId} to ChromaDB.`);
+        console.log(`Saved conversation to ChromaDB (Tokens: ${modelTokenCount}, Latency: ${latency}ms).`);
 
     } catch (error) {
         console.error('Error updating chat history in ChromaDB:', error);
@@ -510,7 +522,7 @@ export async function updateChatHistory(historyId, userMessageParts, modelRespon
 }
 
 // --- NEW: Retrieve relevant memories from ChromaDB ---
-export async function retrieveMemories(queryText, historyId, resultCount = 5) {
+export async function retrieveMemories(queryText, historyId, resultCount = 7) {
     try {
         const messagesCollection = await chroma.getCollection({ name: "messages" });
 
