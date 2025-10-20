@@ -24,6 +24,7 @@ import { ChromaClient } from 'chromadb';
 
 // --- Core Client and API Initialization ---
 // Using new Google GenAI library instead of deprecated @google/generative-ai
+const fsp = fs.promises;
 
 export const client = new Client({
   intents: [
@@ -47,6 +48,56 @@ export const token = process.env.DISCORD_BOT_TOKEN;
 // Initialize ChromaDB Client
 export const chroma = new ChromaClient();
 console.log('ChromaDB client initialized.');
+
+
+// ---- helpers for image -> genai parts (in-memory, no fs) ----
+function guessMimeFromName(name = "") {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".bmp")) return "image/bmp";
+  if (lower.endsWith(".tiff") || lower.endsWith(".tif")) return "image/tiff";
+  return "application/octet-stream";
+}
+
+function isSupportedImage(attachment) {
+  const ct = (attachment.contentType || "").toLowerCase();
+  if (ct) return ct.startsWith("image/") && ct !== "image/gif"; // skip GIFs
+  // fallback: some Discord uploads have no contentType
+  const name = attachment.name || "";
+  return /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(name);
+}
+
+async function attachmentToInlinePart(a) {
+  const res = await fetch(a.url);
+  if (!res.ok) throw new Error(`fetch ${a.url} -> ${res.status}`);
+  const ab = await res.arrayBuffer();
+  const b64 = Buffer.from(ab).toString("base64");
+  return {
+    inlineData: {
+      data: b64,
+      mimeType: a.contentType || guessMimeFromName(a.name)
+    }
+  };
+}
+
+async function collectImagePartsFromMessage(message) {
+  if (!message?.attachments?.size) return [];
+  const parts = [];
+  for (const a of message.attachments.values()) {
+    try {
+      if (!isSupportedImage(a)) continue;
+      parts.push(await attachmentToInlinePart(a));
+    } catch (e) {
+      console.error("collectImageParts error:", e?.message || e);
+    }
+  }
+  return parts;
+}
+
+
+
 
 
 // Pulls the text out of @google/genai responses (no .text() method in this SDK)
@@ -578,25 +629,43 @@ export async function retrieveMemories(queryText, historyId, resultCount = 5) {
 // Using: import { GoogleGenAI, createUserContent } from "@google/genai";
 // And you already have: const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// requires your existing getTextFromGenAI(resp) helper from earlier
+// Using: import { GoogleGenAI, createUserContent } from "@google/genai";
+// You already have: const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 export async function extractAndStoreEntities(text, sourceMessage) {
-  if (!text || text.trim().length < 20) return;
+  const trimmed = (text || "").trim();
+  const hasText = trimmed.length >= 1; // we’ll allow image-only extraction now
 
-  console.log("Attempting to extract entities...");
+  // also try to collect any image attachments from the message
+  const imageParts = await collectImagePartsFromMessage(sourceMessage);
+  const hasImages = imageParts.length > 0;
+
+  // if no text and no images, nothing to do
+  if (!hasText && !hasImages) return;
+
+  console.log("Attempting to extract entities (text + images)…");
   try {
-    const prompt =
-      `From the following text, extract the key entities (people, places, organizations, projects, specific topics). ` +
-      `Return ONLY a JSON array of strings, e.g., ["entity1","entity2"]. If none, return [].\n\nTEXT: "${text}"`;
+    // stricter instruction to fuse text + images and return JSON only
+    const task =
+      `Task: Identify named entities (people, places, organizations, projects, specific topics) ` +
+      `from the provided TEXT and IMAGES. Return ONLY a JSON array of strings ` +
+      `like ["entity1","entity2"]. If none, return [] and nothing else.`;
 
-    // Call path for @google/genai
+    const itemsForUser = [
+      task,
+      hasText ? `TEXT:\n"""${trimmed}"""` : "TEXT: (none)",
+      // image parts get appended here
+      ...imageParts
+    ];
+
     const resp = await genAI.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: createUserContent([prompt]),
-      config: { responseMimeType: "application/json" } // ask for raw JSON, no code fences
+      contents: createUserContent(itemsForUser),
+      config: { responseMimeType: "application/json" }
     });
 
-    // 👇 this replaces your old `resp?.text?.()` line
-    const full = getTextFromGenAI(resp);
-
+    const full = getTextFromGenAI(resp); // <-- your working extractor
     if (!full || !full.trim().startsWith("[")) {
       console.log("Entity extraction returned a non-JSON or empty response. Skipping.");
       return;
@@ -610,37 +679,41 @@ export async function extractAndStoreEntities(text, sourceMessage) {
       return;
     }
 
-    // keep only non-empty strings
     entities = (Array.isArray(entities) ? entities : [])
       .filter(e => typeof e === "string")
       .map(e => e.trim())
       .filter(Boolean);
 
     if (entities.length === 0) {
-      console.log("No entities were found in the text.");
+      console.log("No entities were found from text/images.");
       return;
     }
 
-    // safer on first run
+    // dedupe + keep it reasonable
+    const unique = Array.from(new Set(entities)).slice(0, 50);
+
     const entitiesCollection = await chroma.getOrCreateCollection({ name: "entities" });
     const now = Date.now();
 
     await entitiesCollection.add({
-      ids: entities.map(e => `entity-${sourceMessage.id}-${now}-${e.replace(/\s+/g, "-")}`),
-      documents: entities,
-      metadatas: entities.map(() => ({
+      ids: unique.map(e => `entity-${sourceMessage.id}-${now}-${e.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`),
+      documents: unique,
+      metadatas: unique.map(() => ({
         source_guild_id: sourceMessage.guild?.id ?? "DM",
         source_channel_id: sourceMessage.channel.id,
         source_user_id: sourceMessage.author.id,
-        created_at: now
+        created_at: now,
+        has_text: hasText,
+        has_images: hasImages
       }))
     });
 
-    console.log(`Successfully extracted and stored ${entities.length} entities.`);
+    console.log(`Successfully extracted and stored ${unique.length} entities (text/images).`);
   } catch (error) {
-    console.error("Failed to extract or store entities:", error);
+    console.error("Failed to extract or store entities (text/images):", error);
   }
 }
+
 
 
 export function getUserResponsePreference(userId) {
