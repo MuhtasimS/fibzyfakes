@@ -48,6 +48,26 @@ export const token = process.env.DISCORD_BOT_TOKEN;
 export const chroma = new ChromaClient();
 console.log('ChromaDB client initialized.');
 
+
+// Pulls the text out of @google/genai responses (no .text() method in this SDK)
+function getTextFromGenAI(resp) {
+  if (resp?.candidates?.[0]?.content?.parts) {
+    return resp.candidates[0].content.parts
+      .map(p => (typeof p?.text === "string" ? p.text : ""))
+      .join("");
+  }
+  if (Array.isArray(resp?.output)) {
+    return resp.output
+      .flatMap(o => (Array.isArray(o?.content) ? o.content : []))
+      .map(p => (typeof p?.text === "string" ? p.text : ""))
+      .join("");
+  }
+  // last-ditch fallback if your installed version exposes a plain string
+  if (typeof resp?.text === "string") return resp.text;
+  return "";
+}
+
+
 // --- Concurrency and Request Management ---
 
 export const activeRequests = new Set();
@@ -522,7 +542,7 @@ export async function updateChatHistory(historyId, userMessageParts, modelRespon
 }
 
 // --- NEW: Retrieve relevant memories from ChromaDB ---
-export async function retrieveMemories(queryText, historyId, resultCount = 7) {
+export async function retrieveMemories(queryText, historyId, resultCount = 5) {
     try {
         const messagesCollection = await chroma.getCollection({ name: "messages" });
 
@@ -553,6 +573,75 @@ export async function retrieveMemories(queryText, historyId, resultCount = 7) {
         return null;
     }
 }
+
+// --- FINAL CORRECTED VERSION USING THE DIRECT API CALL ---
+// Using: import { GoogleGenAI, createUserContent } from "@google/genai";
+// And you already have: const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+export async function extractAndStoreEntities(text, sourceMessage) {
+  if (!text || text.trim().length < 20) return;
+
+  console.log("Attempting to extract entities...");
+  try {
+    const prompt =
+      `From the following text, extract the key entities (people, places, organizations, projects, specific topics). ` +
+      `Return ONLY a JSON array of strings, e.g., ["entity1","entity2"]. If none, return [].\n\nTEXT: "${text}"`;
+
+    // Call path for @google/genai
+    const resp = await genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: createUserContent([prompt]),
+      config: { responseMimeType: "application/json" } // ask for raw JSON, no code fences
+    });
+
+    // 👇 this replaces your old `resp?.text?.()` line
+    const full = getTextFromGenAI(resp);
+
+    if (!full || !full.trim().startsWith("[")) {
+      console.log("Entity extraction returned a non-JSON or empty response. Skipping.");
+      return;
+    }
+
+    let entities;
+    try {
+      entities = JSON.parse(full);
+    } catch {
+      console.log("Malformed JSON from model. Skipping.");
+      return;
+    }
+
+    // keep only non-empty strings
+    entities = (Array.isArray(entities) ? entities : [])
+      .filter(e => typeof e === "string")
+      .map(e => e.trim())
+      .filter(Boolean);
+
+    if (entities.length === 0) {
+      console.log("No entities were found in the text.");
+      return;
+    }
+
+    // safer on first run
+    const entitiesCollection = await chroma.getOrCreateCollection({ name: "entities" });
+    const now = Date.now();
+
+    await entitiesCollection.add({
+      ids: entities.map(e => `entity-${sourceMessage.id}-${now}-${e.replace(/\s+/g, "-")}`),
+      documents: entities,
+      metadatas: entities.map(() => ({
+        source_guild_id: sourceMessage.guild?.id ?? "DM",
+        source_channel_id: sourceMessage.channel.id,
+        source_user_id: sourceMessage.author.id,
+        created_at: now
+      }))
+    });
+
+    console.log(`Successfully extracted and stored ${entities.length} entities.`);
+  } catch (error) {
+    console.error("Failed to extract or store entities:", error);
+  }
+}
+
 
 export function getUserResponsePreference(userId) {
   return state.userResponsePreference[userId] || config.defaultResponseFormat;

@@ -54,7 +54,8 @@ import {
   updateChatHistory,
   getUserResponsePreference,
   initializeBlacklistForGuild,
-  retrieveMemories, 
+  retrieveMemories,
+  extractAndStoreEntities,
   chroma
 } from './botManager.js';
 // Import the package.json file to access the bot's version
@@ -1103,42 +1104,42 @@ async function handleStatusCommand(interaction) {
 
 // --- NEW: Handler for the /remember command ---
 async function handleRememberCommand(interaction) {
-    // Defer reply to give us time to process
-    await interaction.deferReply({ ephemeral: true }); // Ephemeral means only you can see the reply
+  // Defer reply to give us time to process
+  await interaction.deferReply({ ephemeral: true }); // Ephemeral means only you can see the reply
 
-    const information = interaction.options.getString('information');
-    const userId = interaction.user.id;
+  const information = interaction.options.getString('information');
+  const userId = interaction.user.id;
 
-    try {
-        const selfContextCollection = await chroma.getCollection({ name: "self_context" });
+  try {
+    const selfContextCollection = await chroma.getCollection({ name: "self_context" });
 
-        const docId = `self-context-${Date.now()}`;
-        const timestamp = new Date().toISOString();
+    const docId = `self-context-${Date.now()}`;
+    const timestamp = new Date().toISOString();
 
-        await selfContextCollection.add({
-            ids: [docId],
-            documents: [information],
-            metadatas: [{
-                added_by: userId,
-                created_at: timestamp
-            }]
-        });
+    await selfContextCollection.add({
+      ids: [docId],
+      documents: [information],
+      metadatas: [{
+        added_by: userId,
+        created_at: timestamp
+      }]
+    });
 
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Self-Context Memory Added')
-            .setDescription(`I'll remember this:\n> "${information}"`);
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('Self-Context Memory Added')
+      .setDescription(`I'll remember this:\n> "${information}"`);
 
-        await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
 
-    } catch (error) {
-        console.error('Error adding to self-context memory:', error);
-        const errorEmbed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Error')
-            .setDescription('I failed to add that to my self-context memory. Please check the logs.');
-        await interaction.editReply({ embeds: [errorEmbed] });
-    }
+  } catch (error) {
+    console.error('Error adding to self-context memory:', error);
+    const errorEmbed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('Error')
+      .setDescription('I failed to add that to my self-context memory. Please check the logs.');
+    await interaction.editReply({ embeds: [errorEmbed] });
+  }
 }
 
 async function handleBlacklistCommand(interaction) {
@@ -2293,6 +2294,10 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         const latency = Date.now() - startTime;
         // We now call our new ChromaDB-focused function, passing the latency
         await updateChatHistory(historyId, userPartsForHistory, finalResponse, originalMessage, latency, finalInstructions, botVersion);
+        // --- NEW: Start entity extraction in the background ---
+        const conversationText = `${originalMessage.cleanContent}\n${finalResponse}`;
+        extractAndStoreEntities(conversationText, originalMessage); // No 'await'
+        // --- END OF NEW CODE ---
       });
       break;
     } catch (error) {
