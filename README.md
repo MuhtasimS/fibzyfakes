@@ -10,6 +10,7 @@ A Discord bot leveraging Google Cloud Vertex AI (Gemini 2.5 Pro) for advanced co
 - **WAY better user experience and interface**
 - **Super duper advanced smart Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx; can understand voice messages; full multimodal support; **can’t write code at the moment**)
 - **PERSISTENT, PERMANENT, REFERENCEABLE MEMORY!!!** (Fibz remembers and can look up archives when needed)
+- **Local ChromaDB vector memory with metadata-rich retrieval** (Fibz stores messages, entities, and self context in a local Chromadb store)
 - **Can recognize different people within the same conversation!** (multi-user attribution/awareness)
 - **Core Identity and Rules** (configurable behavior guardrails)
 - **Updated privacy and consent protocol**
@@ -59,12 +60,31 @@ A Discord bot leveraging Google Cloud Vertex AI (Gemini 2.5 Pro) for advanced co
       VERTEX_PROJECT_ID=your_gcp_project_id
       VERTEX_LOCATION=us-central1
       VERTEX_MODEL=gemini-2.5-pro
+      VERTEX_EMBEDDING_MODEL=models/text-embedding-005
+
+      # Local ChromaDB setup
+      CHROMA_URL=http://127.0.0.1:8000
+      CHROMA_COLLECTION_PREFIX=fibz
+      # Optional: multi-tenant/database routing
+      # CHROMA_TENANT=default
+      # CHROMA_DATABASE=default
+
+      # Memory schema versioning for re-embedding commands
+      MEMORY_SCHEMA_VERSION=v1
       ```
 
 4. **Start the bot:**
     ```bash
     npm start
     ```
+
+### Memory Store
+
+- Run a local [ChromaDB](https://www.trychroma.com/) server (e.g., `chroma run --path .chroma`).
+- Fibz automatically creates the `messages`, `self_context`, `entities`, and `archives` collections with a prefix from `CHROMA_COLLECTION_PREFIX`.
+- Each stored vector contains metadata such as guild, channel, user, consent level, persona, latency, and optional tags (e.g., mentions).
+- Long-term memory retrieval fuses channel/guild filters with cosine similarity to avoid leaking DM content into other contexts.
+- The bot persists its own internal persona and schema notes in `self_context`, letting it recall configuration updates across restarts.
 
 ---
 
