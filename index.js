@@ -42,7 +42,6 @@ import config from './config.js';
 import {
   client,
   genAI,
-  createPartFromUri,
   token,
   activeRequests,
   chatHistoryLock,
@@ -115,7 +114,7 @@ const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 
 import {
   delay,
-  retryOperation,
+  retryWithBackoff,
 } from './tools/others.js';
 
 // <==========>
@@ -502,6 +501,7 @@ async function handleTextMessage(message) {
   }, 120000);
   let botMessage = false;
   let parts;
+  let initialUrlContextMetadata = null;
   try {
     if (SEND_RETRY_ERRORS_TO_DISCORD) {
       clearInterval(typingInterval);
@@ -532,6 +532,10 @@ async function handleTextMessage(message) {
       messageContent = await extractFileText(message, messageContent);
       parts = await processPromptAndMediaAttachments(messageContent, message);
     }
+
+    const urlEnrichment = await enrichPartsWithUrlContext(parts, messageContent);
+    parts = urlEnrichment.parts;
+    initialUrlContextMetadata = urlEnrichment.metadata;
   } catch (error) {
     return console.error('Error initialising message', error);
   }
@@ -628,7 +632,7 @@ async function handleTextMessage(message) {
   // Always enable all three tools: Google Search, URL Context, and Code Execution.
   const tools = [
     { googleSearch: {} },
-    { urlContext: {} },
+    // URL context is handled manually to avoid external vector store issues.
     //Disabled Code execution for now as it crashes the system.
   ];
 
@@ -648,7 +652,7 @@ async function handleTextMessage(message) {
     history: getHistory(historyId)
   });
 
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser);
+  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser, initialUrlContextMetadata);
 }
 
 function hasSupportedAttachments(message) {
@@ -669,16 +673,31 @@ function hasSupportedAttachments(message) {
 }
 
 async function downloadFile(url, filePath) {
-  const writer = createWriteStream(filePath);
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream',
-  });
-  response.data.pipe(writer);
-  return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
+  await retryWithBackoff(async () => {
+    const writer = createWriteStream(filePath);
+    try {
+      const response = await axios({
+        url,
+        method: 'GET',
+        responseType: 'stream',
+        timeout: URL_FETCH_TIMEOUT_MS,
+      });
+
+      await new Promise((resolve, reject) => {
+        response.data.pipe(writer);
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+    } catch (error) {
+      writer.destroy();
+      await fs.rm(filePath, { force: true }).catch(() => {});
+      if (error.code === 'ECONNABORTED') {
+        const timeoutError = new Error('Request timed out');
+        timeoutError.name = 'TimeoutError';
+        throw timeoutError;
+      }
+      throw error;
+    }
   });
 }
 
@@ -722,9 +741,9 @@ async function processPromptAndMediaAttachments(prompt, message) {
             const gcsFileName = `${Date.now()}-${sanitizedFileName}`;
 
             // Upload the local file from the temp directory to your GCS bucket.
-            await storage.bucket(BUCKET_NAME).upload(filePath, {
+            await retryWithBackoff(() => storage.bucket(BUCKET_NAME).upload(filePath, {
               destination: gcsFileName,
-            });
+            }));
 
             // Construct the GCS URI that Vertex AI needs.
             const gcsUri = `gs://${BUCKET_NAME}/${gcsFileName}`;
@@ -760,6 +779,189 @@ async function processPromptAndMediaAttachments(prompt, message) {
   return parts;
 }
 
+const URL_IN_MESSAGE_REGEX = /https?:\/\/[^\s<>()]+/gi;
+const MAX_URLS_FOR_CONTEXT = 3;
+const MAX_URL_CONTEXT_CHARS = 3000;
+const URL_FETCH_TIMEOUT_MS = 8000;
+const URL_CONTEXT_USER_AGENT = 'FibzBot/1.0 (+https://github.com/fibzy/fibzyfakes)';
+
+async function enrichPartsWithUrlContext(parts, messageContent) {
+  try {
+    const urls = extractUrlsFromText(messageContent);
+    if (urls.length === 0) {
+      return { parts, metadata: null };
+    }
+
+    const limitedUrls = urls.slice(0, MAX_URLS_FOR_CONTEXT);
+    const contextParts = [];
+    const metadata = [];
+
+    for (const url of limitedUrls) {
+      try {
+        const { content, truncated } = await fetchUrlContext(url);
+        if (!content) {
+          metadata.push({
+            retrieved_url: url,
+            url_retrieval_status: 'URL_RETRIEVAL_STATUS_ERROR',
+          });
+          continue;
+        }
+
+        metadata.push({
+          retrieved_url: url,
+          url_retrieval_status: 'URL_RETRIEVAL_STATUS_SUCCESS',
+        });
+
+        let contextText = `\n\n--- Additional Context: URL (${url}) ---\n${content}`;
+        if (truncated) {
+          contextText += '\n\n(Note: Content truncated for length.)';
+        }
+        contextText += '\n--- End of URL Context ---';
+        contextParts.push({ text: contextText });
+      } catch (error) {
+        console.warn(`Failed to retrieve URL context for ${url}: ${error.message}`);
+        metadata.push({
+          retrieved_url: url,
+          url_retrieval_status: mapUrlErrorToStatus(error),
+        });
+      }
+    }
+
+    return {
+      parts: contextParts.length > 0 ? [...parts, ...contextParts] : parts,
+      metadata: metadata.length > 0 ? { url_metadata: metadata } : null,
+    };
+  } catch (error) {
+    console.error('Failed to enrich message with URL context:', error);
+    return { parts, metadata: null };
+  }
+}
+
+function extractUrlsFromText(text) {
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+
+  const matches = text.match(URL_IN_MESSAGE_REGEX) || [];
+  const uniqueUrls = new Set();
+  const orderedUrls = [];
+
+  for (const rawUrl of matches) {
+    const normalized = normalizeUrl(rawUrl);
+    if (!normalized || uniqueUrls.has(normalized)) {
+      continue;
+    }
+    uniqueUrls.add(normalized);
+    orderedUrls.push(normalized);
+  }
+
+  return orderedUrls;
+}
+
+function normalizeUrl(rawUrl) {
+  let candidate = rawUrl.trim();
+
+  while (/[),.;!?]$/.test(candidate)) {
+    const shortened = candidate.slice(0, -1);
+    try {
+      const parsed = new URL(shortened);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        candidate = shortened;
+        continue;
+      }
+    } catch (_) {
+      // Ignore and break if shortening results in invalid URL.
+    }
+    break;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed.toString();
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchUrlContext(url) {
+  const { data, headers } = await retryWithBackoff(() => axios.get(url, {
+    responseType: 'text',
+    transformResponse: value => value,
+    timeout: URL_FETCH_TIMEOUT_MS,
+    maxContentLength: 2_000_000,
+    headers: {
+      'User-Agent': URL_CONTEXT_USER_AGENT,
+      'Accept': 'text/html,application/json,text/plain;q=0.9,*/*;q=0.8',
+    },
+    validateStatus: status => status >= 200 && status < 300,
+  }));
+
+  const contentType = (headers['content-type'] || '').toLowerCase();
+  let textContent = typeof data === 'string' ? data : String(data ?? '');
+
+  if (contentType.includes('application/json')) {
+    try {
+      textContent = JSON.stringify(JSON.parse(textContent), null, 2);
+    } catch (_) {
+      // Keep original textContent if parsing fails.
+    }
+  } else if (contentType.includes('text/html')) {
+    textContent = stripHtmlTags(textContent);
+  }
+
+  textContent = decodeBasicEntities(textContent)
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+
+  if (!textContent) {
+    return { content: '', truncated: false };
+  }
+
+  let truncated = false;
+  if (textContent.length > MAX_URL_CONTEXT_CHARS) {
+    textContent = `${textContent.slice(0, MAX_URL_CONTEXT_CHARS)}...`;
+    truncated = true;
+  }
+
+  return { content: textContent, truncated };
+}
+
+function stripHtmlTags(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--.*?-->/gs, ' ')
+    .replace(/<(?:br|p|div|li|ul|ol|section|article|header|footer|h[1-6])[^>]*>/gi, '\n')
+    .replace(/<\/\s*(?:p|div|li|ul|ol|section|article|header|footer|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ');
+}
+
+function decodeBasicEntities(text) {
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function mapUrlErrorToStatus(error) {
+  const status = error?.response?.status ?? error?.status;
+  if (status === 402 || status === 403) {
+    return 'URL_RETRIEVAL_STATUS_PAYWALL';
+  }
+  if (status === 451) {
+    return 'URL_RETRIEVAL_STATUS_UNSAFE';
+  }
+  return 'URL_RETRIEVAL_STATUS_ERROR';
+}
+
 
 async function extractFileText(message, messageContent) {
   if (message.attachments.size > 0) {
@@ -791,9 +993,28 @@ async function downloadAndReadFile(url, fileType) {
         type: 'url'
       }));
     default:
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
-      return await response.text();
+      return await retryWithBackoff(async () => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
+        try {
+          const response = await fetch(url, { signal: controller.signal });
+          if (!response.ok) {
+            const error = new Error(`Failed to download ${response.statusText}`);
+            error.status = response.status;
+            throw error;
+          }
+          return await response.text();
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            const timeoutError = new Error('Fetch timed out');
+            timeoutError.name = 'TimeoutError';
+            throw timeoutError;
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeout);
+        }
+      });
   }
 }
 
@@ -1302,12 +1523,12 @@ async function downloadMessage(interaction) {
 const uploadText = async (text) => {
   const siteUrl = 'https://bin.mudfish.net';
   try {
-    const response = await axios.post(`${siteUrl}/api/text`, {
+    const response = await retryWithBackoff(() => axios.post(`${siteUrl}/api/text`, {
       text: text,
       ttl: 10080
     }, {
-      timeout: 3000
-    });
+      timeout: URL_FETCH_TIMEOUT_MS,
+    }));
 
     const key = response.data.tid;
     return `\nURL: ${siteUrl}/t/${key}`;
@@ -2026,7 +2247,7 @@ async function addSettingsButton(botMessage) {
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser) {
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser, initialUrlContextMetadata = null) {
   const userId = originalMessage.author.id;
   const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
   const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
@@ -2034,9 +2255,9 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
 
   let updateTimeout;
   let tempResponse = '';
-  // Metadata from Google Search with URL Context tool
+  // Metadata from Google Search and manual URL context enrichment
   let groundingMetadata = null;
-  let urlContextMetadata = null;
+  let urlContextMetadata = initialUrlContextMetadata;
 
   const stopGeneratingButton = new ActionRowBuilder()
     .addComponents(
