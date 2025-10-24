@@ -62,7 +62,9 @@ import {
 } from './botManager.js';
 
 
-initialize().catch(console.error);
+if (process.env.NODE_ENV !== 'test') {
+  initialize().catch(console.error);
+}
 
 
 // <=====[Configuration]=====>
@@ -2211,8 +2213,11 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       const userPartsForHistory = parts.map(part => {
         // Check if this part is one of our special context blocks.
         if (part.text && part.text.includes('--- Additional Context')) {
+           const placeholderText = mentionedUser
+            ? `[Context (memories, personalities, histories) for @${mentionedUser.username} was included in this turn.]`
+            : '[Additional context (memories, personalities, histories) was injected into this turn.]';
           // If it is, replace it with a simple placeholder string.
-          return { text: `[Context for user @${mentionedUser.username} was included in this turn.]` };
+          return { text: placeholderText };
         }
         // Otherwise, keep the original part (the user's actual message).
         return part;
@@ -2495,4 +2500,8 @@ async function sendAsTextFile(text, message, orgId) {
 
 // <==========>
 
-client.login(token);
+export { handleModelResponse };
+
+if (process.env.NODE_ENV !== 'test') {
+  client.login(token);
+}
