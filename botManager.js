@@ -22,9 +22,10 @@ import {
 import config from './config.js';
 import {
   initializeMemory,
-  migrateLegacyHistories,
-  storeSelfContextSnippet,
+    migrateLegacyHistories,
+    storeSelfContextSnippet,
 } from './memoryManager.js';
+import { configureInsightAnalyzer } from './tools/insightAnalyzer.js';
 
 // --- Core Client and API Initialization ---
 // Using new Google GenAI library instead of deprecated @google/generative-ai
@@ -307,6 +308,7 @@ export async function initialize() {
   await loadStateFromFile();
   try {
     await initializeMemory(genAI);
+    configureInsightAnalyzer(genAI);
     await migrateLegacyHistories(chatHistories);
     const schemaVersion = process.env.MEMORY_SCHEMA_VERSION || 'v1';
     await storeSelfContextSnippet('core-personality', config.defaultPersonality, {
@@ -372,5 +374,5 @@ export function initializeBlacklistForGuild(guildId) {
     if (!state.serverSettings[guildId]) {
       state.serverSettings[guildId] = config.defaultServerSettings;
     }
-  } catch (error) {}
+  } catch (error) { }
 }

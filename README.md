@@ -10,6 +10,7 @@ A Discord bot leveraging Google Cloud Vertex AI (Gemini 2.5 Pro) for advanced co
 - **WAY better user experience and interface**
 - **Super duper advanced smart Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx; can understand voice messages; full multimodal support; **can’t write code at the moment**)
 - **PERSISTENT, PERMANENT, REFERENCEABLE MEMORY!!!** (Fibz remembers and can look up archives when needed)
+- **Local ChromaDB vector memory with metadata-rich retrieval** (Fibz stores messages, entities, and self context in a local Chromadb store)
 - **Can recognize different people within the same conversation!** (multi-user attribution/awareness)
 - **Core Identity and Rules** (configurable behavior guardrails)
 - **Updated privacy and consent protocol**
@@ -59,7 +60,7 @@ A Discord bot leveraging Google Cloud Vertex AI (Gemini 2.5 Pro) for advanced co
       VERTEX_PROJECT_ID=your_gcp_project_id
       VERTEX_LOCATION=us-central1
       VERTEX_MODEL=gemini-2.5-pro
-         VERTEX_EMBEDDING_MODEL=models/text-embedding-005
+      VERTEX_EMBEDDING_MODEL=models/text-embedding-005
 
       # Local ChromaDB setup
       CHROMA_URL=http://127.0.0.1:8000

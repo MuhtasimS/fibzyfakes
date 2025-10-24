@@ -217,6 +217,7 @@ export async function initializeMemory(genAIInstance) {
   if (!chromaAvailable) {
     return;
   }
+  await ensureCollection('self', { type: 'self_context' });
   await ensureCollection('messages', { type: 'messages' });
   await ensureCollection('entities', { type: 'entities' });
   await ensureCollection('archives', { type: 'archives' });
@@ -337,6 +338,9 @@ export async function storeMessageTurn({
   channelId,
   userId,
   username,
+  displayName,
+  globalName,
+  roles = [],
   userMessageId,
   assistantMessageId,
   userContent,
@@ -364,6 +368,9 @@ export async function storeMessageTurn({
         channel_id: channelId || null,
         user_id: userId,
         username,
+        display_name: displayName || null,
+        global_name: globalName || null,
+        roles,
         role: 'user',
         persona,
         message_id: userMessageId || null,
@@ -384,6 +391,8 @@ export async function storeMessageTurn({
         channel_id: channelId || null,
         user_id: 'fibz',
         username: 'Fibz',
+        display_name: 'Fibz',
+        roles: ['bot'],
         role: 'assistant',
         persona,
         message_id: assistantMessageId || null,
@@ -397,4 +406,139 @@ export async function storeMessageTurn({
   if (items.length) {
     await upsertInBatches(collection, items, 2);
   }
+}
+
+export async function storeEntityInsight({
+  entityId,
+  name,
+  summary,
+  attributes = {},
+  guildId = null,
+  channelId = null,
+  tags = [],
+  consent = 'shareable',
+  lastMentionedAt = null,
+  sourceMessageId = null,
+}) {
+  if (!entityId || !summary) {
+    return;
+  }
+  const collection = await ensureCollection('entities', { type: 'entities' });
+  if (!collection) {
+    return;
+  }
+  const document = sanitizeDocument(summary);
+  const metadata = baseMetadata({
+    entity_id: entityId,
+    name,
+    guild_id: guildId,
+    channel_id: channelId,
+    attributes,
+    consent,
+    tags: ['entity', ...tags],
+    last_mentioned_at: lastMentionedAt || new Date().toISOString(),
+    source_message_id: sourceMessageId,
+  });
+  metadata.aliases = attributes.aliases || [];
+  await upsertToCollection(collection, [
+    {
+      id: createDeterministicId('entity', entityId, guildId || 'global'),
+      document,
+      metadata,
+    },
+  ]);
+}
+
+export async function retrieveEntityInsights({ query, limit = 5, guildId = null }) {
+  const trimmed = (query || '').trim();
+  if (!trimmed) {
+    return [];
+  }
+  const collection = await ensureCollection('entities', { type: 'entities' });
+  if (!collection) {
+    return [];
+  }
+  const embedding = await embedText(trimmed);
+  if (!embedding) {
+    return [];
+  }
+  const where = {};
+  if (guildId) {
+    where.guild_id = guildId;
+  }
+  const response = await safeRequest('post', `/api/v1/collections/${collection.id}/query`, {
+    query_embeddings: [embedding],
+    n_results: limit,
+    where,
+    include: ['documents', 'metadatas'],
+  });
+  const documents = response.data?.documents?.[0] || [];
+  const metadatas = response.data?.metadatas?.[0] || [];
+  return documents
+    .map((doc, index) => ({
+      document: doc,
+      metadata: metadatas[index] || {},
+    }))
+    .filter((entry) => entry.document);
+}
+
+export async function getEntitiesByIds(entityIds = []) {
+  if (!Array.isArray(entityIds) || entityIds.length === 0) {
+    return [];
+  }
+  const collection = await ensureCollection('entities', { type: 'entities' });
+  if (!collection) {
+    return [];
+  }
+  const results = [];
+  for (const entityId of entityIds) {
+    const { data } = await safeRequest('post', `/api/v1/collections/${collection.id}/get`, {
+      where: { entity_id: entityId },
+      include: ['documents', 'metadatas'],
+      limit: 1,
+    });
+    if (data?.documents?.[0]) {
+      results.push({
+        document: data.documents[0],
+        metadata: (data.metadatas && data.metadatas[0]) || {},
+      });
+    }
+  }
+  return results;
+}
+
+async function deleteFromCollection(collectionKey, where) {
+  const collection = await ensureCollection(collectionKey, { type: collectionKey });
+  if (!collection) {
+    return;
+  }
+  if (!where || !Object.keys(where).length) {
+    return;
+  }
+  await safeRequest('post', `/api/v1/collections/${collection.id}/delete`, { where });
+}
+
+export async function deleteUserMemories({ historyId, guildId, channelId, userId }) {
+  const where = {};
+  if (historyId) {
+    where.history_id = historyId;
+  }
+  if (userId) {
+    where.user_id = userId;
+  }
+  if (guildId) {
+    where.guild_id = guildId;
+  }
+  if (channelId) {
+    where.channel_id = channelId;
+  }
+  await deleteFromCollection('messages', where);
+}
+
+export async function deleteServerMemories(guildId) {
+  if (!guildId) {
+    return;
+  }
+  await deleteFromCollection('messages', { guild_id: guildId });
+  await deleteFromCollection('entities', { guild_id: guildId });
 }

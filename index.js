@@ -41,9 +41,15 @@ const BUCKET_NAME = 'fibzyfakes';
 import config from './config.js';
 import {
   retrieveRelevantMemories,
+  retrieveEntityInsights,
   storeMessageTurn,
   getSelfContextSnippets,
+  getEntitiesByIds,
+  deleteUserMemories,
+  deleteServerMemories,
 } from './memoryManager.js';
+import { queueInsightAnalysis } from './tools/insightAnalyzer.js';
+import { sanitizeContextForHistory } from './tools/historyUtils.js';
 import {
   client,
   genAI,
@@ -118,7 +124,115 @@ const workInDMs = config.workInDMs;
 const shouldDisplayPersonalityButtons = config.shouldDisplayPersonalityButtons;
 const SEND_RETRY_ERRORS_TO_DISCORD = config.SEND_RETRY_ERRORS_TO_DISCORD;
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
+function formatRelativeTime(deltaMs) {
+  const abs = Math.abs(deltaMs);
+  const seconds = Math.floor(abs / 1000);
+  if (seconds < 60) {
+    return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days < 30) {
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+  const months = Math.floor(days / 30);
+  if (months < 12) {
+    return `${months} month${months === 1 ? '' : 's'}`;
+  }
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? '' : 's'}`;
+}
+
+async function resolveReferencedMembers(message, messageContent) {
+  const referenced = new Map();
+  const guild = message.guild;
+  const addMember = (member) => {
+    if (!member || !member.user) {
+      return;
+    }
+    if (referenced.has(member.user.id)) {
+      return;
+    }
+    referenced.set(member.user.id, {
+      id: member.user.id,
+      username: member.user.username,
+      displayName: member.displayName,
+      globalName: member.user.globalName,
+      user: member.user,
+    });
+  };
+
+  message.mentions?.members?.forEach(addMember);
+  if (!guild) {
+    return Array.from(referenced.values());
+  }
+
+  const rawIdMatches = messageContent.match(/\b\d{17,19}\b/g) || [];
+  for (const rawId of rawIdMatches) {
+    try {
+      const member = await guild.members.fetch(rawId);
+      addMember(member);
+    } catch (error) {
+      // ignore missing members
+    }
+  }
+
+  const normalizedContent = messageContent.toLowerCase();
+  let checked = 0;
+  for (const member of guild.members.cache.values()) {
+    if (checked > 200) {
+      break;
+    }
+    checked += 1;
+    const namesToCheck = [member.displayName, member.user.username, member.user.globalName].filter(Boolean);
+    for (const candidate of namesToCheck) {
+      const candidateNormalized = candidate.toLowerCase();
+      if (candidateNormalized.length < 3) {
+        continue;
+      }
+      const pattern = new RegExp(`\\b${escapeRegex(candidateNormalized)}\\b`, 'i');
+      if (pattern.test(normalizedContent)) {
+        addMember(member);
+        break;
+      }
+    }
+  }
+  return Array.from(referenced.values());
+}
+
+function isShareableEntity(metadata, requesterId) {
+  if (!metadata) {
+    return true;
+  }
+  if (metadata.consent === 'private') {
+    return false;
+  }
+  if (metadata.consent === 'consent_required' && metadata.entity_id !== requesterId) {
+    return false;
+  }
+  return true;
+}
+
+function formatEntityInsights(insights) {
+  return insights
+    .map((entry) => {
+      const name = entry.metadata?.name || entry.metadata?.entity_id || 'Entity';
+      const lastMention = entry.metadata?.last_mentioned_at ? ` (last mentioned ${entry.metadata.last_mentioned_at})` : '';
+      return `- ${name}${lastMention}: ${entry.document.length > 300 ? `${entry.document.slice(0, 300)}…` : entry.document}`;
+    })
+    .join('\n');
+}
 
 import {
   delay,
@@ -403,6 +517,15 @@ async function handleClearMemoryCommand(interaction) {
         // If "Yes" is clicked, clear the memory.
         delete state.chatHistories[userId];
         await saveStateToFile();
+        try {
+          await deleteUserMemories({
+            historyId: userId,
+            userId,
+            guildId: interaction.guild ? interaction.guild.id : null,
+          });
+        } catch (error) {
+          console.warn('Failed to purge vectorized user memories:', error.message);
+        }
         // Update the message to show success and remove the buttons.
         await i.update({ content: 'Your personal chat history has been cleared.', components: [] });
       } else if (i.customId === 'cancel_clear') {
@@ -545,7 +668,9 @@ async function handleTextMessage(message) {
 
   // --- NEW LOGIC TO CROSS-REFERENCE CONVERSATIONS & INSTRUCTIONS (v4) ---
 
-  const mentionedUser = message.mentions.users.find(user => !user.bot);
+  const referencedMembers = await resolveReferencedMembers(message, messageContent);
+  const mentionedUserEntry = referencedMembers.find((entry) => entry.id !== client.user.id);
+  const mentionedUser = mentionedUserEntry ? mentionedUserEntry.user : null;
 
   if (mentionedUser) {
     console.log(`Referenced user detected: ${mentionedUser.username} (ID: ${mentionedUser.id})`);
@@ -601,6 +726,37 @@ async function handleTextMessage(message) {
     console.warn('Failed to retrieve long-term memories:', error.message);
   }
 
+  let entityInsights = [];
+  try {
+    const directEntityIds = referencedMembers.map((entry) => entry.id);
+    if (directEntityIds.length) {
+      const direct = await getEntitiesByIds(directEntityIds);
+      entityInsights.push(...direct);
+    }
+    const semanticEntities = await retrieveEntityInsights({
+      query: messageContent,
+      limit: 5,
+      guildId,
+    });
+    entityInsights.push(...semanticEntities);
+  } catch (error) {
+    console.warn('Failed to retrieve entity insights:', error.message);
+  }
+
+  const shareableEntityInsights = [];
+  const seenEntityIds = new Set();
+  for (const insight of entityInsights) {
+    const entityId = insight.metadata?.entity_id || insight.metadata?.name || insight.document.slice(0, 30);
+    if (seenEntityIds.has(entityId)) {
+      continue;
+    }
+    if (!isShareableEntity(insight.metadata, userId)) {
+      continue;
+    }
+    shareableEntityInsights.push(insight);
+    seenEntityIds.add(entityId);
+  }
+
   if (retrievedMemories.length) {
     const formattedMemories = retrievedMemories
       .map((entry, index) => {
@@ -616,6 +772,13 @@ async function handleTextMessage(message) {
       .join('\n');
     parts.unshift({
       text: `\n\n--- Additional Context: Retrieved Long-Term Memory ---\nUse these high-signal memories to ground your reply:\n${formattedMemories}\n--- End of Retrieved Memory ---`,
+    });
+  }
+
+  if (shareableEntityInsights.length) {
+    const formattedEntities = formatEntityInsights(shareableEntityInsights);
+    parts.unshift({
+      text: `\n\n--- Additional Context: Known Entities ---\nLeverage these entity snapshots when relevant:\n${formattedEntities}\n--- End of Known Entities ---`,
     });
   }
 
@@ -670,6 +833,13 @@ async function handleTextMessage(message) {
     finalInstructions += `\n\n---\n\n# Fibz Internal Notes\n${summarizedNotes}`;
   }
 
+  const now = new Date();
+  const messageTimestamp = message.createdAt;
+  const relative = formatRelativeTime(now - messageTimestamp);
+  finalInstructions += `\n\n---\n\n# Temporal Context\nCurrent UTC time: ${now.toISOString()}\nMost recent user message timestamp: ${messageTimestamp.toISOString()} (${relative} ago). Use this to distinguish recent events from older history.`;
+
+  finalInstructions += `\n\n---\n\n# Disclosure Guidance\nWhen asked about Fibz or other entities, consult the provided memories and share only items whose consent is shareable or belong to the requester. Decline or request consent before disclosing items marked private or consent_required.`;
+
   // This part of the logic remains the same.
   const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
   const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
@@ -711,6 +881,7 @@ async function handleTextMessage(message) {
     messageContent,
     retrievedMemories.length,
     personaDescriptor,
+    referencedMembers,
   );
 }
 
@@ -1658,6 +1829,11 @@ async function clearServerChatHistory(interaction) {
 
     if (state.serverSettings[serverId].serverChatHistory) {
       state.chatHistories[serverId] = {};
+      try {
+        await deleteServerMemories(serverId);
+      } catch (error) {
+        console.warn('Failed to purge server memories from vector store:', error.message);
+      }
       const clearedEmbed = new EmbedBuilder()
         .setColor(0x00FF00)
         .setTitle('Chat History Cleared')
@@ -2089,7 +2265,7 @@ async function addSettingsButton(botMessage) {
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser, originalUserPrompt, retrievedMemoryCount = 0, personaDescriptor = 'default') {
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser, originalUserPrompt, retrievedMemoryCount = 0, personaDescriptor = 'default', referencedMembers = []) {
   const userId = originalMessage.author.id;
   const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
   const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
@@ -2102,6 +2278,9 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   if (retrievedMemoryCount > 0) {
     tagsForMemory.push('memory:retrieved');
   }
+  referencedMembers.forEach((entry) => {
+    tagsForMemory.push(`entity:${entry.id}`);
+  });
 
   let updateTimeout;
   let tempResponse = '';
@@ -2210,21 +2389,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       // --- NEW LOGIC TO CREATE PLACEHOLDER FOR SAVED HISTORY ---
 
       // Create a clean version of the user's prompt for saving.
-      const userPartsForHistory = parts.map(part => {
-        // Check if this part is one of our special context blocks.
-        if (part.text && part.text.includes('--- Additional Context')) {
-           const placeholderText = mentionedUser
-            ? `[Context (memories, personalities, histories) for @${mentionedUser.username} was included in this turn.]`
-            : '[Additional context (memories, personalities, histories) was injected into this turn.]';
-          // If it is, replace it with a simple placeholder string.
-          return { text: placeholderText };
-        }
-        // Otherwise, keep the original part (the user's actual message).
-        return part;
-      }).filter((part, index, self) =>
-        // Remove duplicate placeholders if both history and instructions were found.
-        index === self.findIndex(p => p.text === part.text)
-      );
+      const userPartsForHistory = sanitizeContextForHistory(parts, mentionedUser ? mentionedUser.username : null);
 
       newHistory.push({
         role: 'user',
@@ -2317,6 +2482,9 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           channelId: originalMessage.channel ? originalMessage.channel.id : null,
           userId: originalMessage.author.id,
           username: originalMessage.author.username,
+          displayName: originalMessage.member ? originalMessage.member.displayName : originalMessage.author.displayName,
+          globalName: originalMessage.author.globalName || null,
+          roles: originalMessage.member ? Array.from(originalMessage.member.roles.cache.keys()) : [],
           userMessageId: originalMessage.id,
           assistantMessageId: botMessage?.id,
           userContent: originalUserPrompt,
@@ -2329,6 +2497,32 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
       } catch (memoryError) {
         console.warn('Failed to persist turn to memory:', memoryError.message);
       }
+      queueInsightAnalysis({
+        userMessage: {
+          author: {
+            id: originalMessage.author.id,
+            username: originalMessage.author.username,
+            displayName: originalMessage.member ? originalMessage.member.displayName : originalMessage.author.displayName,
+            globalName: originalMessage.author.globalName || null,
+          },
+          text: originalUserPrompt,
+          referenced_entities: referencedMembers.map((entry) => ({
+            id: entry.id,
+            username: entry.username,
+            displayName: entry.displayName,
+            globalName: entry.globalName,
+          })),
+        },
+        assistantMessage: {
+          text: finalResponse,
+        },
+        metadata: {
+          guildId: originalMessage.guild ? originalMessage.guild.id : null,
+          channelId: originalMessage.channel ? originalMessage.channel.id : null,
+          messageId: originalMessage.id,
+          timestamp: new Date().toISOString(),
+        },
+      });
       break;
     } catch (error) {
       if (activeRequests.has(userId)) {
