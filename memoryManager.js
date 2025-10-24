@@ -8,6 +8,8 @@ const COLLECTION_PREFIX = process.env.CHROMA_COLLECTION_PREFIX || 'fibz';
 const EMBEDDING_MODEL = process.env.VERTEX_EMBEDDING_MODEL || 'models/text-embedding-005';
 const MAX_DOCUMENT_LENGTH = 6000;
 const DEFAULT_BATCH_SIZE = 8;
+const DEFAULT_TENANT = 'default_tenant';
+const DEFAULT_DATABASE = 'default_database';
 
 const COLLECTION_KEYS = {
   messages: 'messages',
@@ -21,35 +23,39 @@ let hasLoggedFailure = false;
 let genAIClient = null;
 let selfContextCache = [];
 const collectionCache = new Map();
+let useTenantScopedCollections = false;
+let httpClient = axios;
 
 function headers() {
   const baseHeaders = {};
-  if (CHROMA_TENANT) {
-    baseHeaders['X-Chroma-Tenant'] = CHROMA_TENANT;
+  const tenantHeader = CHROMA_TENANT || (useTenantScopedCollections ? DEFAULT_TENANT : null);
+  const databaseHeader = CHROMA_DATABASE || (useTenantScopedCollections ? DEFAULT_DATABASE : null);
+  if (tenantHeader) {
+    baseHeaders['X-Chroma-Tenant'] = tenantHeader;
   }
-  if (CHROMA_DATABASE) {
-    baseHeaders['X-Chroma-Database'] = CHROMA_DATABASE;
+  if (databaseHeader) {
+    baseHeaders['X-Chroma-Database'] = databaseHeader;
   }
   return baseHeaders;
 }
 
 async function safeRequest(method, path, data) {
   if (!chromaAvailable) {
-    return { data: null, notFound: false };
+    return { data: null, notFound: false, status: null };
   }
   try {
-    const response = await axios({
+    const response = await httpClient({
       method,
       url: `${CHROMA_URL}${path}`,
       data,
       headers: headers(),
       timeout: 10000,
     });
-    return { data: response.data, notFound: false };
+    return { data: response.data, notFound: false, status: response.status };
   } catch (error) {
     const status = error.response?.status;
     if (status === 404) {
-      return { data: null, notFound: true };
+      return { data: null, notFound: true, status };
     }
     if (!hasLoggedFailure) {
       console.warn(`[memory] Failed Chroma request ${method.toUpperCase()} ${path}: ${error.message}`);
@@ -58,8 +64,38 @@ async function safeRequest(method, path, data) {
     if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET' || (status && status >= 500)) {
       chromaAvailable = false;
     }
-    return { data: null, notFound: false };
+    return { data: null, notFound: false, status };
   }
+}
+
+export function __setHttpClient(client) {
+  httpClient = client || axios;
+}
+
+function tenantValue() {
+  return CHROMA_TENANT || DEFAULT_TENANT;
+}
+
+function databaseValue() {
+  return CHROMA_DATABASE || DEFAULT_DATABASE;
+}
+
+function collectionsBasePath() {
+  if (!useTenantScopedCollections) {
+    return '/api/v1/collections';
+  }
+  const tenant = encodeURIComponent(tenantValue());
+  const database = encodeURIComponent(databaseValue());
+  return `/api/v1/tenants/${tenant}/databases/${database}/collections`;
+}
+
+async function listCollections() {
+  let response = await safeRequest('get', collectionsBasePath());
+  if (response.status === 410 && !useTenantScopedCollections) {
+    useTenantScopedCollections = true;
+    response = await safeRequest('get', collectionsBasePath());
+  }
+  return response;
 }
 
 function createDeterministicId(...parts) {
@@ -133,7 +169,7 @@ async function ensureCollection(key, metadata = {}) {
     return collectionCache.get(key);
   }
   const name = collectionName(key);
-  const { data } = await safeRequest('get', '/api/v1/collections');
+  const { data } = await listCollections();
   if (Array.isArray(data?.collections)) {
     const existing = data.collections.find((col) => col.name === name);
     if (existing) {
@@ -141,7 +177,7 @@ async function ensureCollection(key, metadata = {}) {
       return existing;
     }
   }
-  const creation = await safeRequest('post', '/api/v1/collections', {
+  const creation = await safeRequest('post', collectionsBasePath(), {
     name,
     metadata,
   });
