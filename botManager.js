@@ -12,7 +12,6 @@ import {
 import {
   GoogleGenAI,
   createUserContent,
-  createPartFromUri
 } from '@google/genai';
 import fs from 'fs/promises';
 import path from 'path';
@@ -40,7 +39,7 @@ export const genAI = new GoogleGenAI({
   project: process.env.GOOGLE_CLOUD_PROJECT,
   location: process.env.GOOGLE_CLOUD_LOCATION,
 });
-export { createUserContent, createPartFromUri };
+export { createUserContent };
 export const token = process.env.DISCORD_BOT_TOKEN;
 
 // --- Concurrency and Request Management ---
