@@ -1,0 +1,1279 @@
+This is Fibz. A discord bot written in javascript. I'll paste its readme with its capabilities below. I've set up a local chroma database and what I want to do is to improve it in the following ways: 
+- vectorizing and migrating its current memory and storing all future information in a locally hosted chromadb database and the ability to retrieve it
+- add storage of more metadata for messages within the vectorized database 
+- Have it save relevant context about itself across conversations
+Here are some other features I could think to add to it: 
+- Context menus & message actions
+Right-click → “Ask Fibz about this message/file.”
+- Reaction-based controls
+React with 🔁 to regenerate, 📎 to export, 🧠 to pin to memory.
+- Multi-store memory
+messages, self_context, entities, archives (cold).
+- Metadata-rich vectors
+Store: guild_id, channel_id, user_id, persona, modality, consent, version, tags, latency, token_counts.
+- Hybrid search (BM25 + vectors)
+- Scheduled compression
+Periodically summarize old threads → archives with source back-refs.
+- Slide & PDF understanding
+Chunk by page/slide; attach page numbers in citations.
+- Image “who/what/where” tagging
+Extract entities/locations; index as metadata for better recall.
+- Metrics & tracing
+Prometheus counters: requests, tokens, latency, tool calls, retrieval hit-rate.
+- Idempotent upserts
+Deterministic IDs (guild:channel:message) to avoid dupes.
+- Config hot-reload
+Change personas/rules without restarts.
+- Export/import
+/export thread|channel → zip with JSONL + attachments.
+- One-command dev
+boots bot + Chroma + dashboard via Docker Compose.
+- Release notes
+Auto-generate CHANGELOG, update “Fibz: What’s new” command.
+- Entity memory graphs
+Build a lightweight knowledge graph (people ↔ topics ↔ files).
+- Instruction precedence engine (core > user > server/channel)
+Where core personality is prepended to user custom personality which are both prepended to server/channel instructions. In case of clashing instructions, core takes precedence over user, which takes precedence over server/channel. 
+- Consent & sharing policy (decision table)
+Classify each item as Shareable / Private / Consent-required.
+Defaults:
+DM content: Private unless user opts in to share.
+Channel content: Shareable to same channel/server.
+Personal attributes, contact info, health, finances: Consent-required.
+I want it to be able to decide what's okay to share and what isn't. If consent-required stuff comes up, I want it to ping the required user and ask for consent.
+- Chroma design (no Postgres, per your choice)
+Collections: messages, self_context, entities, archives.
+Metadata (suggested): guild_id, channel_id, user_id, username, role, modality, reply_to, created_at, tokens, persona, version, consent, tags.
+Filters: Always include guild_id and same channel_id for cross-user queries unless policy overrides.
+- Retriever quality without “feedback loop”
+Hybrid fuse (optional): quick BM25 (tiny in-proc) + cosine (no extra DB).
+Chunking: semantic + size cap (e.g., 800–1200 tokens), page anchors for PDFs/slides.
+Post-retrieve reasoned re-ranking (LLM picks top N) for higher precision.
+- Multimodal ingestion
+Voice messages → Cloud Speech-to-Text; keep audio hash + duration in metadata.
+Images/PDFs: OCR (Vision API or Tesseract) + captions; store page/slide numbers.
+AV: ffmpeg duration/aid/mid; extract speech tracks when present.
+(It can already do most of this)
+- “Re-embed” maintenance command to bump schema versions.
+- Graceful Vertex fallbacks (retry/backoff) without adding rate-guard features.
+- Observability (lightweight)
+Structured logs (JSON) for: prompt id, model, latency, tokens, retrieval hit count, consent path.
+/status adds: Chroma doc counts by collection + last embed model version.
+
+That's it for stuff I want to add/improve. Here is a current list of what the bot can do: 
+Fibz: A Discord bot leveraging Google Cloud Vertex AI (Gemini 2.5 Pro) for advanced conversation, content understanding, image/video/audio recognition, voice message comprehension, and more — with enterprise-grade security and a vastly improved UX.
+- **Now powered by 2.5 Gemini Pro!** (via Vertex AI)
+- **Uses Google Cloud Vertex AI Platform**
+- **Enterprise-grade security and authentication**
+- **WAY better user experience and interface**
+- **Super duper advanced smart Image/video/audio and file recognition** (supports images, videos, audios, PDFs, docx, pptx; can understand voice messages; full multimodal support; **can’t write code at the moment**)
+- **PERSISTENT, PERMANENT, REFERENCEABLE MEMORY!!!** (Fibz remembers and can look up archives when needed)
+- **Can recognize different people within the same conversation!** (multi-user attribution/awareness)
+- **Core Identity and Rules** (configurable behavior guardrails)
+- **Updated privacy and consent protocol**
+- **Personalized personalities!** (per user, channel, or server)
+- **Improved and foolproofed button-based UI**
+- **Ability to override the 2000 character limit when instructed to** (auto-splitting/attachments)
+- **Server and channel-wide chat history** options
+- **Admin controls** for blacklisting/whitelisting users
+- **Downloadable conversation/message history**
+- **Multiple AI tools:** integrated tool use (e.g., Google Search)
+- **Status monitoring** (RAM, CPU, and reset timer)
+
+If you want, I can give you a quick rundown of the code formatted and compressed via repomix to make it easier to understand what you're working with too. Here it is:
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter), security check has been disabled.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: node_modules, README.md, LICENSE.md, example.env, .gitignore
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Empty lines have been removed from all files
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Security check has been disabled - content may contain sensitive information
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+botManager.js
+commands.js
+config.js
+index.js
+package.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="botManager.js">
+dotenv.config();
+⋮----
+// --- Core Client and API Initialization ---
+// Using new Google GenAI library instead of deprecated @google/generative-ai
+export const client = new Client({
+⋮----
+// Initialize with new API format that requires apiKey object
+export const genAI = new GoogleGenAI({
+⋮----
+// --- Concurrency and Request Management ---
+export const activeRequests = new Set();
+class Mutex {
+⋮----
+acquire() {
+return new Promise(resolve => {
+⋮----
+resolve();
+⋮----
+this._queue.push(resolve);
+⋮----
+release() {
+⋮----
+const nextResolve = this._queue.shift();
+nextResolve();
+⋮----
+async runExclusive(callback) {
+await this.acquire();
+⋮----
+return await callback();
+⋮----
+this.release();
+⋮----
+export const chatHistoryLock = new Mutex();
+// --- State and Data Management ---
+⋮----
+get chatHistories() {
+⋮----
+set chatHistories(v) {
+⋮----
+get activeUsersInChannels() {
+⋮----
+set activeUsersInChannels(v) {
+⋮----
+get customInstructions() {
+⋮----
+set customInstructions(v) {
+⋮----
+get serverSettings() {
+⋮----
+set serverSettings(v) {
+⋮----
+get userResponsePreference() {
+⋮----
+set userResponsePreference(v) {
+⋮----
+get alwaysRespondChannels() {
+⋮----
+set alwaysRespondChannels(v) {
+⋮----
+get channelWideChatHistory() {
+⋮----
+set channelWideChatHistory(v) {
+⋮----
+get blacklistedUsers() {
+⋮----
+set blacklistedUsers(v) {
+⋮----
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const CONFIG_DIR = path.join(__dirname, 'config');
+const CHAT_HISTORIES_DIR = path.join(CONFIG_DIR, 'chat_histories_4');
+export const TEMP_DIR = path.join(__dirname, 'temp');
+⋮----
+activeUsersInChannels: path.join(CONFIG_DIR, 'active_users_in_channels.json'),
+customInstructions: path.join(CONFIG_DIR, 'custom_instructions.json'),
+serverSettings: path.join(CONFIG_DIR, 'server_settings.json'),
+userResponsePreference: path.join(CONFIG_DIR, 'user_response_preference.json'),
+alwaysRespondChannels: path.join(CONFIG_DIR, 'always_respond_channels.json'),
+channelWideChatHistory: path.join(CONFIG_DIR, 'channel_wide_chathistory.json'),
+blacklistedUsers: path.join(CONFIG_DIR, 'blacklisted_users.json')
+⋮----
+// --- Data Persistence Functions ---
+⋮----
+export async function saveStateToFile() {
+⋮----
+await fs.mkdir(CONFIG_DIR, {
+⋮----
+await fs.mkdir(CHAT_HISTORIES_DIR, {
+⋮----
+const chatHistoryPromises = Object.entries(chatHistories).map(([key, value]) => {
+const filePath = path.join(CHAT_HISTORIES_DIR, `${key}.json`);
+return fs.writeFile(filePath, JSON.stringify(value, null, 2), 'utf-8');
+⋮----
+const filePromises = Object.entries(FILE_PATHS).map(([key, filePath]) => {
+return fs.writeFile(filePath, JSON.stringify(state[key], null, 2), 'utf-8');
+⋮----
+await Promise.all([...chatHistoryPromises, ...filePromises]);
+⋮----
+console.error('Error saving state to files:', error);
+⋮----
+saveStateToFile();
+⋮----
+async function loadStateFromFile() {
+⋮----
+await fs.mkdir(TEMP_DIR, {
+⋮----
+const files = await fs.readdir(CHAT_HISTORIES_DIR);
+⋮----
+.filter(file => file.endsWith('.json'))
+.map(async file => {
+const user = path.basename(file, '.json');
+const filePath = path.join(CHAT_HISTORIES_DIR, file);
+⋮----
+const data = await fs.readFile(filePath, 'utf-8');
+chatHistories[user] = JSON.parse(data);
+⋮----
+console.error(`Error reading chat history for ${user}:`, readError);
+⋮----
+await Promise.all(chatHistoryPromises);
+const filePromises = Object.entries(FILE_PATHS).map(async ([key, filePath]) => {
+⋮----
+state[key] = JSON.parse(data);
+⋮----
+console.error(`Error reading ${key} from ${filePath}:`, readError);
+⋮----
+await Promise.all(filePromises);
+⋮----
+console.error('Error loading state from files:', error);
+⋮----
+// --- Daily Cleanup and Initialization ---
+function removeFileData(histories) {
+⋮----
+Object.values(histories).forEach(subIdEntries => {
+subIdEntries.forEach(message => {
+⋮----
+message.content = message.content.filter(contentItem => {
+⋮----
+return Object.keys(contentItem).length > 0;
+⋮----
+console.log('fileData elements have been removed from chat histories.');
+⋮----
+console.error('An error occurred while removing fileData elements:', error);
+⋮----
+function scheduleDailyReset() {
+⋮----
+const now = new Date();
+const nextReset = new Date();
+nextReset.setHours(0, 0, 0, 0);
+⋮----
+nextReset.setDate(now.getDate() + 1);
+⋮----
+setTimeout(async () => {
+console.log('Running daily cleanup task...');
+await chatHistoryLock.runExclusive(async () => {
+removeFileData(chatHistories);
+await saveStateToFile();
+⋮----
+console.log('Daily cleanup task finished.');
+scheduleDailyReset();
+⋮----
+console.error('An error occurred while scheduling the daily reset:', error);
+⋮----
+export async function initialize() {
+⋮----
+await loadStateFromFile();
+console.log('Bot state loaded and initialized.');
+⋮----
+// --- State Helper Functions ---
+export function getHistory(id) {
+⋮----
+// Combine all message histories for this ID
+⋮----
+if (historyObject.hasOwnProperty(messagesId)) {
+⋮----
+// Transform to format expected by new Google GenAI API
+return combinedHistory.map(entry => {
+⋮----
+export function updateChatHistory(id, newHistory, messagesId) {
+⋮----
+export function getUserResponsePreference(userId) {
+⋮----
+export function initializeBlacklistForGuild(guildId) {
+</file>
+
+<file path="commands.js">
+
+</file>
+
+<file path="config.js">
+
+</file>
+
+<file path="index.js">
+const storage = new Storage();
+⋮----
+initialize().catch(console.error);
+// <=====[Configuration]=====>
+⋮----
+/*
+`BLOCK_NONE`  -  Always show regardless of probability of unsafe content
+`BLOCK_ONLY_HIGH`  -  Block when high probability of unsafe content
+`BLOCK_MEDIUM_AND_ABOVE`  -  Block when medium or high probability of unsafe content
+`BLOCK_LOW_AND_ABOVE`  -  Block when low, medium or high probability of unsafe content
+`HARM_BLOCK_THRESHOLD_UNSPECIFIED`  -  Threshold is unspecified, block using default threshold
+*/
+⋮----
+// maxOutputTokens: 1000,
+⋮----
+const activities = config.activities.map(activity => ({
+⋮----
+// <==========>
+// <=====[Register Commands And Activities]=====>
+⋮----
+client.once('clientReady', async () => {
+console.log(`Logged in as ${client.user.tag}!`);
+const rest = new REST().setToken(token);
+⋮----
+console.log('Started refreshing application (/) commands.');
+await rest.put(
+Routes.applicationCommands(client.user.id), {
+⋮----
+console.log('Successfully reloaded application (/) commands.');
+⋮----
+console.error(error);
+⋮----
+client.user.setPresence({
+⋮----
+setInterval(() => {
+⋮----
+// <=====[Messages And Interaction]=====>
+client.on('messageCreate', async (message) => {
+⋮----
+if (message.content.startsWith('!')) return;
+⋮----
+(message.mentions.users.has(client.user.id) && !isDM) ||
+⋮----
+initializeBlacklistForGuild(message.guild.id);
+if (state.blacklistedUsers[message.guild.id].includes(message.author.id)) {
+const embed = new EmbedBuilder()
+.setColor(0xFF0000)
+.setTitle('Blacklisted')
+.setDescription('You are blacklisted and cannot use this bot.');
+return message.reply({
+⋮----
+if (activeRequests.has(message.author.id)) {
+⋮----
+.setColor(0xFFFF00)
+.setTitle('Request In Progress')
+.setDescription('Please wait until your previous action is complete.');
+await message.reply({
+⋮----
+activeRequests.add(message.author.id);
+await handleTextMessage(message);
+⋮----
+console.error('Error processing the message:', error);
+⋮----
+activeRequests.delete(message.author.id);
+⋮----
+client.on('interactionCreate', async (interaction) => {
+⋮----
+if (interaction.isChatInputCommand()) {
+await handleCommandInteraction(interaction);
+} else if (interaction.isButton()) {
+await handleButtonInteraction(interaction);
+} else if (interaction.isModalSubmit()) {
+await handleModalSubmit(interaction);
+⋮----
+console.error('Error handling interaction:', error.message);
+⋮----
+async function handleCommandInteraction(interaction) {
+if (!interaction.isChatInputCommand()) return;
+⋮----
+await handler(interaction);
+⋮----
+console.log(`Unknown command: ${interaction.commandName}`);
+⋮----
+async function handleButtonInteraction(interaction) {
+if (!interaction.isButton()) return;
+⋮----
+initializeBlacklistForGuild(interaction.guild.id);
+if (state.blacklistedUsers[interaction.guild.id].includes(interaction.user.id)) {
+⋮----
+.setDescription('You are blacklisted and cannot use this interaction.');
+return interaction.reply({
+⋮----
+for (const [key, handler] of Object.entries(buttonHandlers)) {
+if (interaction.customId.startsWith(key)) {
+⋮----
+if (interaction.customId.startsWith('delete_message-')) {
+const msgId = interaction.customId.replace('delete_message-', '');
+await handleDeleteMessageInteraction(interaction, msgId);
+⋮----
+async function handleDeleteMessageInteraction(interaction, msgId) {
+⋮----
+const message = channel ? (await channel.messages.fetch(msgId).catch(() => false)) : false;
+⋮----
+await deleteMsg();
+⋮----
+const replyingTo = message ? (message.reference ? (await message.channel.messages.fetch(message.reference.messageId)).author.id : 0) : 0;
+⋮----
+.setTitle('Not For You')
+.setDescription('This button is not meant for you.');
+⋮----
+async function deleteMsg() {
+await interaction.message.delete()
+.catch('Error deleting interaction message: ', console.error);
+⋮----
+message.delete().catch(() => { });
+⋮----
+async function handleClearMemoryCommand(interaction) {
+⋮----
+// This is the original safety check. If server-wide history is on, we stop here.
+⋮----
+.setColor(0xFF5555)
+.setTitle('Feature Disabled')
+.setDescription('Clearing chat history is not enabled for this server, as Server-Wide chat history is active.');
+await interaction.reply({
+⋮----
+// Server-wide history is OFF, so we can proceed with the confirmation flow.
+// First, check if there's any personal history to clear.
+⋮----
+return await interaction.reply({ content: 'You have no personal chat history to clear.', ephemeral: true });
+⋮----
+// 1. Create the confirmation buttons.
+const confirmButton = new ButtonBuilder()
+.setCustomId('confirm_clear')
+.setLabel('Yes, clear it')
+.setStyle(ButtonStyle.Danger); // Red for a destructive action.
+const cancelButton = new ButtonBuilder()
+.setCustomId('cancel_clear')
+.setLabel('No, cancel')
+.setStyle(ButtonStyle.Secondary); // Grey for a safe action.
+// 2. Create an action row to hold the buttons.
+const row = new ActionRowBuilder()
+.addComponents(confirmButton, cancelButton);
+// 3. Send the confirmation message with the buttons.
+const confirmationMessage = await interaction.reply({
+⋮----
+ephemeral: true // Only the user who ran the command will see this.
+⋮----
+// 4. Create a collector to listen for a button click from only this user.
+const filter = i => i.user.id === userId;
+const collector = confirmationMessage.createMessageComponentCollector({ filter, time: 60000 }); // Wait for 60 seconds.
+collector.on('collect', async i => {
+⋮----
+// If "Yes" is clicked, clear the memory.
+⋮----
+await saveStateToFile();
+// Update the message to show success and remove the buttons.
+await i.update({ content: 'Your personal chat history has been cleared.', components: [] });
+⋮----
+// If "No" is clicked, cancel the action.
+await i.update({ content: 'Action canceled. Your chat history was not cleared.', components: [] });
+⋮----
+collector.on('end', collected => {
+// This runs after the 60-second timer is up.
+⋮----
+// If no button was clicked, edit the message to show it timed out.
+interaction.editReply({ content: 'Confirmation timed out. Your chat history was not cleared.', components: [] });
+⋮----
+async function handleCustomPersonalityCommand(interaction) {
+⋮----
+await setCustomPersonality(interaction);
+⋮----
+.setDescription('Custom personality is not enabled for this server, Server-Wide personality is active.');
+⋮----
+async function handleRemovePersonalityCommand(interaction) {
+⋮----
+await removeCustomPersonality(interaction);
+⋮----
+async function handleToggleResponseMode(interaction) {
+⋮----
+await toggleUserResponsePreference(interaction);
+⋮----
+.setDescription('Toggling Response Mode is not enabled for this server, Server-Wide Response Mode is active.');
+⋮----
+async function editShowSettings(interaction) {
+await showSettings(interaction, true);
+⋮----
+// <=====[Messages Handling]=====>
+async function handleTextMessage(message) {
+⋮----
+let messageContent = message.content.replace(new RegExp(`<@!?${botId}>`), '').trim();
+if (messageContent === '' && !(message.attachments.size > 0 && hasSupportedAttachments(message))) {
+if (activeRequests.has(userId)) {
+activeRequests.delete(userId);
+⋮----
+.setColor(0x00FFFF)
+.setTitle('Empty Message')
+.setDescription("It looks like you didn't say anything. What would you like to talk about?");
+const botMessage = await message.reply({
+⋮----
+await addSettingsButton(botMessage);
+⋮----
+message.channel.sendTyping();
+const typingInterval = setInterval(() => {
+⋮----
+setTimeout(() => {
+clearInterval(typingInterval);
+⋮----
+const updateEmbedDescription = (textAttachmentStatus, imageAttachmentStatus, finalText) => {
+⋮----
+.setTitle('Processing')
+.setDescription(updateEmbedDescription('[🔁]', '[🔁]'));
+botMessage = await message.reply({
+⋮----
+messageContent = await extractFileText(message, messageContent);
+embed.setDescription(updateEmbedDescription('[☑️]', '[🔁]'));
+await botMessage.edit({
+⋮----
+parts = await processPromptAndMediaAttachments(messageContent, message);
+embed.setDescription(updateEmbedDescription('[☑️]', '[☑️]', '### All checks done. Waiting for the response...'));
+⋮----
+return console.error('Error initialising message', error);
+⋮----
+// --- NEW LOGIC TO CROSS-REFERENCE CONVERSATIONS & INSTRUCTIONS (v4) ---
+const mentionedUser = message.mentions.users.find(user => !user.bot);
+⋮----
+console.log(`Referenced user detected: ${mentionedUser.username} (ID: ${mentionedUser.id})`);
+// --- CHAT HISTORY LOOKUP ---
+const otherUserHistory = getHistory(mentionedUser.id);
+⋮----
+// TRUNCATION: Only take the last 20 messages from the other user's history.
+⋮----
+const truncatedHistory = otherUserHistory.slice(-RECENT_MESSAGES_LIMIT);
+const historyText = truncatedHistory.map(h => {
+const content = h.parts?.map(p => p.text).join(' ') || '';
+⋮----
+}).join('\n');
+⋮----
+parts.unshift(historyContextPart);
+console.log(`Successfully loaded and prepended the last ${truncatedHistory.length} messages for ${mentionedUser.username}.`);
+⋮----
+console.log(`No chat history found via getHistory() for the mentioned user: ${mentionedUser.username}`);
+⋮----
+// --- PERSONALITY INSTRUCTIONS LOOKUP (This part is correct) ---
+⋮----
+if (personalityInstructions && personalityInstructions.trim() !== '') {
+⋮----
+parts.unshift(instructionContextPart);
+console.log(`Successfully loaded and prepended personality instructions for ${mentionedUser.username}.`);
+⋮----
+console.log(`No custom instructions found for the mentioned user: ${mentionedUser.username}`);
+⋮----
+// --- END OF NEW LOGIC ---
+⋮----
+// --- NEW LOGIC TO PREPEND DEFAULT PERSONALITY ---
+// 1. Start with the base defaultPersonality as the foundation for all interactions.
+⋮----
+// 2. If custom instructions exist (from user, channel, or server settings), append them.
+⋮----
+// 3. Append server and user info if applicable, just like before.
+⋮----
+// This part of the logic remains the same.
+⋮----
+// Always enable all three tools: Google Search, URL Context, and Code Execution.
+⋮----
+//Disabled Code execution for now as it crashes the system.
+⋮----
+// Create chat with new Google GenAI API format
+⋮----
+const chat = genAI.chats.create({
+⋮----
+parts: [{ text: finalInstructions }] // The fallback is no longer needed.
+⋮----
+history: getHistory(historyId)
+⋮----
+await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser);
+⋮----
+function hasSupportedAttachments(message) {
+⋮----
+return message.attachments.some((attachment) => {
+const contentType = (attachment.contentType || "").toLowerCase();
+const fileExtension = path.extname(attachment.name) || '';
+⋮----
+(contentType.startsWith('image/') && contentType !== 'image/gif') ||
+contentType.startsWith('audio/') ||
+contentType.startsWith('video/') ||
+contentType.startsWith('application/pdf') ||
+contentType.startsWith('application/x-pdf') ||
+supportedFileExtensions.includes(fileExtension)
+⋮----
+async function downloadFile(url, filePath) {
+const writer = createWriteStream(filePath);
+const response = await axios({
+⋮----
+response.data.pipe(writer);
+return new Promise((resolve, reject) => {
+writer.on('finish', resolve);
+writer.on('error', reject);
+⋮----
+function sanitizeFileName(fileName) {
+⋮----
+.toLowerCase()
+.replace(/[^a-z0-9-]/g, '-')
+.replace(/^-+|-+$/g, '');
+⋮----
+async function processPromptAndMediaAttachments(prompt, message) {
+const attachments = JSON.parse(JSON.stringify(Array.from(message.attachments.values())));
+⋮----
+const validAttachments = attachments.filter(attachment => {
+⋮----
+return (contentType.startsWith('image/') && contentType !== 'image/gif') ||
+⋮----
+contentType.startsWith('application/x-pdf');
+⋮----
+const attachmentParts = await Promise.all(
+validAttachments.map(async (attachment) => {
+const sanitizedFileName = sanitizeFileName(attachment.name);
+⋮----
+const filePath = path.join(TEMP_DIR, uniqueTempFilename);
+⋮----
+// This part is correct, it downloads the file to a temporary location.
+await downloadFile(attachment.url, filePath);
+// --- NEW GCS UPLOAD LOGIC STARTS HERE ---
+// Define a unique name for the file in the GCS bucket.
+const gcsFileName = `${Date.now()}-${sanitizedFileName}`;
+// Upload the local file from the temp directory to your GCS bucket.
+await storage.bucket(BUCKET_NAME).upload(filePath, {
+⋮----
+// Construct the GCS URI that Vertex AI needs.
+⋮----
+// Return the object structure that the Vertex AI API expects for a file.
+// This replaces the old `createPartFromUri` function call.
+⋮----
+console.error(`Error processing attachment ${sanitizedFileName}:`, error);
+⋮----
+// This original cleanup logic is perfect and ensures the temporary local file is deleted.
+⋮----
+await fs.unlink(filePath);
+⋮----
+console.error(`Error deleting temporary file ${filePath}:`, unlinkError);
+⋮----
+parts = [...parts, ...attachmentParts.filter(part => part !== null)];
+⋮----
+async function extractFileText(message, messageContent) {
+⋮----
+let attachments = Array.from(message.attachments.values());
+⋮----
+const fileType = path.extname(attachment.name) || '';
+⋮----
+if (fileTypes.includes(fileType)) {
+⋮----
+let fileContent = await downloadAndReadFile(attachment.url, fileType);
+⋮----
+console.error(`Error reading file ${attachment.name}: ${error.message}`);
+⋮----
+async function downloadAndReadFile(url, fileType) {
+⋮----
+const extractor = getTextExtractor();
+return (await extractor.extractText({
+⋮----
+const response = await fetch(url);
+if (!response.ok) throw new Error(`Failed to download ${response.statusText}`);
+return await response.text();
+⋮----
+// <=====[Interaction Reply]=====>
+async function handleModalSubmit(interaction) {
+⋮----
+const customInstructionsInput = interaction.fields.getTextInputValue('custom-personality-input');
+state.customInstructions[interaction.user.id] = customInstructionsInput.trim();
+⋮----
+.setColor(0x00FF00)
+.setTitle('Success')
+.setDescription('Custom Personality Instructions Saved!');
+⋮----
+console.log(error.message);
+⋮----
+const customInstructionsInput = interaction.fields.getTextInputValue('custom-server-personality-input');
+state.customInstructions[interaction.guild.id] = customInstructionsInput.trim();
+⋮----
+.setDescription('Custom Server Personality Instructions Saved!');
+⋮----
+async function clearChatHistory(interaction) {
+⋮----
+.setTitle('Chat History Cleared')
+.setDescription('Chat history cleared!');
+⋮----
+async function alwaysRespond(interaction) {
+⋮----
+const dmDisabledEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Feature Disabled in DMs')
+.setDescription('This feature is disabled in direct messages.');
+⋮----
+await handleSubButtonInteraction(interaction, true);
+⋮----
+async function handleRespondToAllCommand(interaction) {
+⋮----
+const dmEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Command Not Available')
+.setDescription('This command cannot be used in DMs.');
+⋮----
+if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+const adminEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Admin Required')
+.setDescription('You need to be an admin to use this command.');
+⋮----
+const enabled = interaction.options.getBoolean('enabled');
+⋮----
+const startRespondEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Bot Response Enabled')
+.setDescription('The bot will now respond to all messages in this channel.');
+⋮----
+const stopRespondEmbed = new EmbedBuilder()
+.setColor(0xFFA500)
+.setTitle('Bot Response Disabled')
+.setDescription('The bot will now stop responding to all messages in this channel.');
+⋮----
+async function toggleChannelChatHistory(interaction) {
+⋮----
+const instructions = interaction.options.getString('instructions') || defaultPersonality;
+⋮----
+const enabledEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Channel History Enabled')
+.setDescription(`Channel-wide chat history has been enabled.`);
+⋮----
+const disabledEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Channel History Disabled')
+.setDescription('Channel-wide chat history has been disabled.');
+⋮----
+console.error('Error in toggleChannelChatHistory:', error);
+⋮----
+async function handleStatusCommand(interaction) {
+⋮----
+await interaction.deferReply();
+⋮----
+const updateMessage = async () => {
+⋮----
+}, cpuPercentage] = await Promise.all([
+mem.info(),
+cpu.usage()
+⋮----
+const now = new Date();
+const nextReset = new Date();
+nextReset.setHours(0, 0, 0, 0);
+⋮----
+nextReset.setDate(now.getDate() + 1);
+⋮----
+const hours = Math.floor(timeLeftMillis / 3600000);
+const minutes = Math.floor((timeLeftMillis % 3600000) / 60000);
+const seconds = Math.floor((timeLeftMillis % 60000) / 1000);
+⋮----
+.setColor(hexColour)
+.setTitle('System Information')
+.addFields({
+⋮----
+.setTimestamp();
+await interaction.editReply({
+⋮----
+console.error('Error updating message:', error);
+if (interval) clearInterval(interval);
+⋮----
+await updateMessage();
+const message = await interaction.fetchReply();
+await addSettingsButton(message);
+interval = setInterval(updateMessage, 2000);
+⋮----
+clearInterval(interval);
+⋮----
+console.error('Error in handleStatusCommand function:', error);
+⋮----
+async function handleBlacklistCommand(interaction) {
+⋮----
+const userId = interaction.options.getUser('user').id;
+⋮----
+initializeBlacklistForGuild(guildId);
+if (!state.blacklistedUsers[guildId].includes(userId)) {
+state.blacklistedUsers[guildId].push(userId);
+const blacklistedEmbed = new EmbedBuilder()
+⋮----
+.setTitle('User Blacklisted')
+.setDescription(`<@${userId}> has been blacklisted.`);
+⋮----
+const alreadyBlacklistedEmbed = new EmbedBuilder()
+⋮----
+.setTitle('User Already Blacklisted')
+.setDescription(`<@${userId}> is already blacklisted.`);
+⋮----
+async function handleWhitelistCommand(interaction) {
+⋮----
+const index = state.blacklistedUsers[guildId].indexOf(userId);
+⋮----
+state.blacklistedUsers[guildId].splice(index, 1);
+const removedEmbed = new EmbedBuilder()
+⋮----
+.setTitle('User Whitelisted')
+.setDescription(`<@${userId}> has been removed from the blacklist.`);
+⋮----
+const notFoundEmbed = new EmbedBuilder()
+⋮----
+.setTitle('User Not Found')
+.setDescription(`<@${userId}> is not in the blacklist.`);
+⋮----
+async function setCustomPersonality(interaction) {
+⋮----
+const input = new TextInputBuilder()
+.setCustomId(customId)
+.setLabel("What should the bot's personality be like?")
+.setStyle(TextInputStyle.Paragraph)
+.setPlaceholder("Enter the custom instructions here...")
+.setMinLength(10)
+.setMaxLength(4000);
+const modal = new ModalBuilder()
+.setCustomId('custom-personality-modal')
+.setTitle(title)
+.addComponents(new ActionRowBuilder().addComponents(input));
+await interaction.showModal(modal);
+⋮----
+async function downloadMessage(interaction) {
+⋮----
+const emptyEmbed = new EmbedBuilder()
+⋮----
+.setDescription('The message is empty..?');
+⋮----
+const filePath = path.join(TEMP_DIR, `message_content_${interaction.id}.txt`);
+await fs.writeFile(filePath, textContent, 'utf8');
+const attachment = new AttachmentBuilder(filePath, {
+⋮----
+const initialEmbed = new EmbedBuilder()
+.setColor(0xFFFFFF)
+.setTitle('Message Content Downloaded')
+.setDescription(`Here is the content of the message.`);
+⋮----
+response = await interaction.reply({
+⋮----
+response = await interaction.user.send({
+⋮----
+const dmSentEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Content Sent')
+.setDescription('The message content has been sent to your DMs.');
+⋮----
+console.error(`Failed to send DM: ${error}`);
+const failDMEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Delivery Failed')
+.setDescription('Failed to send the content to your DMs.');
+⋮----
+const msgUrl = await uploadText(textContent);
+const updatedEmbed = EmbedBuilder.from(response.embeds[0])
+.setDescription(`Here is the content of the message.\n${msgUrl}`);
+⋮----
+await response.edit({
+⋮----
+console.log('Failed to process download: ', error);
+⋮----
+const uploadText = async (text) => {
+⋮----
+const response = await axios.post(`${siteUrl}/api/text`, {
+⋮----
+console.log(error);
+⋮----
+async function downloadConversation(interaction) {
+⋮----
+const conversationHistory = getHistory(userId);
+⋮----
+const noHistoryEmbed = new EmbedBuilder()
+⋮----
+.setTitle('No History Found')
+.setDescription('No conversation history found.');
+⋮----
+let conversationText = conversationHistory.map(entry => {
+⋮----
+const content = entry.parts.map(c => c.text).join('\n');
+⋮----
+}).join('');
+const tempFileName = path.join(TEMP_DIR, `conversation_${interaction.id}.txt`);
+await fs.writeFile(tempFileName, conversationText, 'utf8');
+const file = new AttachmentBuilder(tempFileName, {
+⋮----
+await interaction.user.send({
+⋮----
+.setTitle('History Sent')
+.setDescription('Your conversation history has been sent to your DMs.');
+⋮----
+.setDescription('Failed to send the conversation history to your DMs.');
+⋮----
+await fs.unlink(tempFileName);
+⋮----
+console.log(`Failed to download conversation: ${error.message}`);
+⋮----
+async function removeCustomPersonality(interaction) {
+⋮----
+.setTitle('Removed')
+.setDescription('Custom personality instructions removed!');
+⋮----
+async function toggleUserResponsePreference(interaction) {
+⋮----
+const currentPreference = getUserResponsePreference(userId);
+⋮----
+async function toggleServerWideChatHistory(interaction) {
+⋮----
+.setTitle('Server Command Only')
+.setDescription('This command can only be used in a server.');
+⋮----
+initializeBlacklistForGuild(serverId);
+⋮----
+.setColor(state.serverSettings[serverId].serverChatHistory ? 0x00FF00 : 0xFF0000)
+.setTitle('Chat History Toggled')
+.setDescription(statusMessage + warningMessage);
+⋮----
+console.log('Error toggling server-wide chat history:', error.message);
+⋮----
+async function toggleServerPersonality(interaction) {
+⋮----
+.setColor(state.serverSettings[serverId].customServerPersonality ? 0x00FF00 : 0xFF0000)
+.setTitle('Server Personality Toggled')
+.setDescription(statusMessage);
+⋮----
+console.log('Error toggling server-wide personality:', error.message);
+⋮----
+async function toggleServerResponsePreference(interaction) {
+⋮----
+.setColor(state.serverSettings[serverId].serverResponsePreference ? 0x00FF00 : 0xFF0000)
+.setTitle('Server Response Preference Toggled')
+⋮----
+console.log('Error toggling server-wide response preference:', error.message);
+⋮----
+async function toggleSettingSaveButton(interaction) {
+⋮----
+.setColor(state.serverSettings[serverId].settingsSaveButton ? 0x00FF00 : 0xFF0000)
+.setTitle('Settings Save Button Toggled')
+⋮----
+console.log('Error toggling server-wide settings save button:', error.message);
+⋮----
+async function serverPersonality(interaction) {
+⋮----
+.setCustomId('custom-server-personality-modal')
+⋮----
+async function clearServerChatHistory(interaction) {
+⋮----
+const clearedEmbed = new EmbedBuilder()
+⋮----
+.setDescription('Server-wide chat history cleared!');
+⋮----
+.setDescription('Server-wide chat history is disabled for this server.');
+⋮----
+console.log('Failed to clear server-wide chat history:', error.message);
+⋮----
+async function downloadServerConversation(interaction) {
+⋮----
+const conversationHistory = getHistory(guildId);
+⋮----
+.setDescription('No server-wide conversation history found.');
+⋮----
+const conversationText = conversationHistory.map(entry => {
+⋮----
+const tempFileName = path.join(TEMP_DIR, `server_conversation_${interaction.id}.txt`);
+⋮----
+.setDescription('Server-wide conversation history has been sent to your DMs.');
+⋮----
+.setDescription('Failed to send the server-wide conversation history to your DMs.');
+⋮----
+console.log(`Failed to download server conversation: ${error.message}`);
+⋮----
+async function toggleServerPreference(interaction) {
+⋮----
+.setTitle('Server Response Style Updated')
+.setDescription(`Server response style updated to: ${state.serverSettings[guildId].responseStyle}`);
+⋮----
+async function showSettings(interaction, edit = false) {
+⋮----
+const mainButtonsComponents = mainButtons.map(config =>
+new ButtonBuilder()
+.setCustomId(config.customId)
+.setLabel(config.label)
+.setEmoji(config.emoji)
+.setStyle(config.style)
+⋮----
+const mainActionRow = new ActionRowBuilder().addComponents(...mainButtonsComponents);
+⋮----
+.setTitle('Settings')
+.setDescription('Please choose a category from the buttons below:');
+⋮----
+await interaction.update({
+⋮----
+console.error('Error showing settings:', error.message);
+⋮----
+async function handleSubButtonInteraction(interaction, update = false) {
+⋮----
+const responseMode = getUserResponsePreference(userId);
+⋮----
+const subButtons = subButtonConfigs[update ? 'general-settings' : interaction.customId].map(config =>
+⋮----
+actionRows.push(new ActionRowBuilder().addComponents(subButtons.splice(0, 5)));
+⋮----
+new EmbedBuilder()
+⋮----
+.setTitle(`${update ? 'General Settings' : interaction.customId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}`)
+.setDescription('Please choose an option from the buttons below:'),
+⋮----
+async function showDashboard(interaction) {
+⋮----
+.setTitle('Command Restricted')
+⋮----
+.setTitle('Administrator Required')
+⋮----
+const allButtons = buttonConfigs.map((config) =>
+⋮----
+actionRows.push(
+new ActionRowBuilder().addComponents(allButtons.splice(0, 5))
+⋮----
+.setDescription('Your Server Settings:');
+⋮----
+// <=====[Others]=====>
+async function addDownloadButton(botMessage) {
+⋮----
+const downloadButton = new ButtonBuilder()
+.setCustomId('download_message')
+.setLabel('Save')
+.setEmoji('⬇️')
+.setStyle(ButtonStyle.Secondary);
+⋮----
+actionRow = ActionRowBuilder.from(messageComponents[0]);
+⋮----
+actionRow = new ActionRowBuilder();
+⋮----
+actionRow.addComponents(downloadButton);
+return await botMessage.edit({
+⋮----
+console.error('Error adding download button:', error.message);
+⋮----
+async function addDeleteButton(botMessage, msgId) {
+⋮----
+.setCustomId(`delete_message-${msgId}`)
+.setLabel('Delete')
+.setEmoji('🗑️')
+⋮----
+console.error('Error adding delete button:', error.message);
+⋮----
+async function addSettingsButton(botMessage) {
+⋮----
+const settingsButton = new ButtonBuilder()
+.setCustomId('settings')
+.setEmoji('⚙️')
+⋮----
+const actionRow = new ActionRowBuilder().addComponents(settingsButton);
+⋮----
+console.log('Error adding settings button:', error.message);
+⋮----
+// <=====[Model Response Handling]=====>
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser) {
+⋮----
+const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
+⋮----
+// Metadata from Google Search with URL Context tool
+⋮----
+const stopGeneratingButton = new ActionRowBuilder()
+.addComponents(
+⋮----
+.setCustomId('stopGenerating')
+.setLabel('Stop Generating')
+.setStyle(ButtonStyle.Danger)
+⋮----
+botMessage = await originalMessage.reply({
+⋮----
+botMessage.edit({
+⋮----
+const filter = (interaction) => interaction.customId === 'stopGenerating';
+⋮----
+const collector = await botMessage.createMessageComponentCollector({
+⋮----
+collector.on('collect', (interaction) => {
+⋮----
+.setTitle('Response Stopped')
+.setDescription('Response generation stopped by the user.');
+interaction.reply({
+⋮----
+console.error('Error sending reply:', error);
+⋮----
+.setTitle('Access Denied')
+.setDescription("It's not for you.");
+⋮----
+console.error('Error sending unauthorized reply:', error);
+⋮----
+console.error('Error creating or handling collector:', error);
+⋮----
+const updateMessage = () => {
+⋮----
+if (tempResponse.trim() === "") {
+⋮----
+updateEmbed(botMessage, tempResponse, originalMessage, groundingMetadata, urlContextMetadata);
+⋮----
+// Add a safety check to prevent crashing on long streaming updates
+⋮----
+clearTimeout(updateTimeout);
+⋮----
+// --- NEW LOGIC TO CREATE PLACEHOLDER FOR SAVED HISTORY ---
+// Create a clean version of the user's prompt for saving.
+const userPartsForHistory = parts.map(part => {
+// Check if this part is one of our special context blocks.
+if (part.text && part.text.includes('--- Additional Context')) {
+// If it is, replace it with a simple placeholder string.
+⋮----
+// Otherwise, keep the original part (the user's actual message).
+⋮----
+}).filter((part, index, self) =>
+// Remove duplicate placeholders if both history and instructions were found.
+index === self.findIndex(p => p.text === part.text)
+⋮----
+newHistory.push({
+⋮----
+async function getResponse(parts) {
+⋮----
+const messageResult = await chat.sendMessageStream({
+⋮----
+// Capture grounding metadata from Google Search with URL Context tool
+⋮----
+// Capture URL context metadata from Google Search with URL Context tool
+⋮----
+.setTitle('Response Overflow')
+.setDescription('The response got too large, will be sent as a text file once it is completed.');
+⋮----
+updateTimeout = setTimeout(updateMessage, 500);
+⋮----
+await getResponse(parts);
+// Final update to ensure grounding and URL context metadata is displayed in embedded responses
+⋮----
+updateEmbed(botMessage, finalResponse, originalMessage, groundingMetadata, urlContextMetadata);
+⋮----
+botMessage = await addSettingsButton(botMessage);
+⋮----
+sendAsTextFile(finalResponse, originalMessage, botMessage.id);
+botMessage = await addDeleteButton(botMessage, botMessage.id);
+⋮----
+botMessage = await addDownloadButton(botMessage);
+⋮----
+await chatHistoryLock.runExclusive(async () => {
+updateChatHistory(historyId, newHistory, botMessage.id);
+⋮----
+console.error('Generation Attempt Failed: ', error);
+⋮----
+.setTitle('Generation Failure')
+.setDescription(`All Generation Attempts Failed :(\n\`\`\`${error.message}\`\`\``);
+const errorMsg = await originalMessage.channel.send({
+⋮----
+await addSettingsButton(errorMsg);
+⋮----
+const simpleErrorEmbed = new EmbedBuilder()
+⋮----
+.setTitle('Bot Overloaded')
+.setDescription('Something seems off, the bot might be overloaded! :(');
+⋮----
+embeds: [new EmbedBuilder()
+⋮----
+.setTitle('Retry in Progress')
+.setDescription(`Generation Attempt(s) Failed, Retrying..\n\`\`\`${error.message}\`\`\``)
+⋮----
+setTimeout(() => errorMsg.delete().catch(console.error), 5000);
+await delay(500);
+⋮----
+function updateEmbed(botMessage, finalResponse, message, groundingMetadata = null, urlContextMetadata = null) {
+⋮----
+.setDescription(finalResponse)
+.setAuthor({
+⋮----
+iconURL: message.author.displayAvatarURL()
+⋮----
+// Add grounding metadata if user has Google Search tool enabled and Embedded responses selected
+if (groundingMetadata && shouldShowGroundingMetadata(message)) {
+addGroundingMetadataToEmbed(embed, groundingMetadata);
+⋮----
+// Add URL context metadata if user has Google Search tool enabled and Embedded responses selected
+if (urlContextMetadata && shouldShowGroundingMetadata(message)) {
+addUrlContextMetadataToEmbed(embed, urlContextMetadata);
+⋮----
+embed.setFooter({
+⋮----
+iconURL: message.guild.iconURL() || 'https://ai.google.dev/static/site-assets/images/share.png'
+⋮----
+console.error("An error occurred while updating the embed:", error.message);
+⋮----
+function addGroundingMetadataToEmbed(embed, groundingMetadata) {
+// Add search queries used by the model
+⋮----
+embed.addFields({
+⋮----
+value: groundingMetadata.webSearchQueries.map(query => `• ${query}`).join('\n'),
+⋮----
+// Add grounding sources with clickable links
+⋮----
+.slice(0, 5) // Limit to first 5 chunks to avoid embed limits
+.map((chunk, index) => {
+⋮----
+.join('\n');
+⋮----
+function addUrlContextMetadataToEmbed(embed, urlContextMetadata) {
+// Add URL retrieval status with success/failure indicators
+⋮----
+.map(urlData => {
+⋮----
+function shouldShowGroundingMetadata(message) {
+// Tools are always enabled; only show when user prefers Embedded responses
+⋮----
+: getUserResponsePreference(userId);
+⋮----
+async function sendAsTextFile(text, message, orgId) {
+⋮----
+const filename = `response-${Date.now()}.txt`;
+const tempFilePath = path.join(TEMP_DIR, filename);
+await fs.writeFile(tempFilePath, text);
+const botMessage = await message.channel.send({
+⋮----
+await addDeleteButton(botMessage, orgId);
+await fs.unlink(tempFilePath);
+⋮----
+console.error('An error occurred:', error);
+⋮----
+client.login(token);
+</file>
+
+<file path="package.json">
+{
+  "type": "module",
+  "dependencies": {
+    "@google-cloud/storage": "^7.17.1",
+    "@google/genai": "*",
+    "axios": "*",
+    "discord.js": "*",
+    "dotenv": "*",
+    "fs": "*",
+    "node-os-utils": "*",
+    "office-text-extractor": "*",
+    "sharp": "*"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
+</file>
+
+</files>

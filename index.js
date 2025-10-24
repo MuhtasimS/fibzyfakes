@@ -40,6 +40,11 @@ const BUCKET_NAME = 'fibzyfakes';
 
 import config from './config.js';
 import {
+  retrieveRelevantMemories,
+  storeMessageTurn,
+  getSelfContextSnippets,
+} from './memoryManager.js';
+import {
   client,
   genAI,
   createPartFromUri,
@@ -581,6 +586,38 @@ async function handleTextMessage(message) {
   // --- END OF NEW LOGIC ---
 
 
+  let retrievedMemories = [];
+  try {
+    retrievedMemories = await retrieveRelevantMemories({
+      query: messageContent,
+      userId,
+      guildId,
+      channelId,
+      limit: 5,
+    });
+  } catch (error) {
+    console.warn('Failed to retrieve long-term memories:', error.message);
+  }
+
+  if (retrievedMemories.length) {
+    const formattedMemories = retrievedMemories
+      .map((entry, index) => {
+        const label = entry.metadata?.role === 'assistant'
+          ? 'Fibz'
+          : (entry.metadata?.username || 'User');
+        const timestamp = entry.metadata?.created_at ? ` [${entry.metadata.created_at}]` : '';
+        const snippet = entry.document.length > 400
+          ? `${entry.document.slice(0, 400)}…`
+          : entry.document;
+        return `${index + 1}. ${label}${timestamp}: ${snippet}`;
+      })
+      .join('\n');
+    parts.unshift({
+      text: `\n\n--- Additional Context: Retrieved Long-Term Memory ---\nUse these high-signal memories to ground your reply:\n${formattedMemories}\n--- End of Retrieved Memory ---`,
+    });
+  }
+
+
   let instructions;
   if (guildId) {
     if (state.channelWideChatHistory[channelId]) {
@@ -619,6 +656,18 @@ async function handleTextMessage(message) {
     finalInstructions += infoStr;
   }
 
+  const selfContextSnippets = getSelfContextSnippets();
+  if (selfContextSnippets.length) {
+    const summarizedNotes = selfContextSnippets
+      .map((snippet) => {
+        const title = snippet.metadata?.title || snippet.metadata?.key || 'Note';
+        const doc = snippet.document.length > 400 ? `${snippet.document.slice(0, 400)}…` : snippet.document;
+        return `- ${title}: ${doc}`;
+      })
+      .join('\n');
+    finalInstructions += `\n\n---\n\n# Fibz Internal Notes\n${summarizedNotes}`;
+  }
+
   // This part of the logic remains the same.
   const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
   const historyId = isChannelChatHistoryEnabled ? (isServerChatHistoryEnabled ? guildId : channelId) : userId;
@@ -648,7 +697,19 @@ async function handleTextMessage(message) {
     history: getHistory(historyId)
   });
 
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser);
+  const personaDescriptor = instructions ? 'custom' : 'default';
+  await handleModelResponse(
+    botMessage,
+    chat,
+    parts,
+    message,
+    typingInterval,
+    historyId,
+    mentionedUser,
+    messageContent,
+    retrievedMemories.length,
+    personaDescriptor,
+  );
 }
 
 function hasSupportedAttachments(message) {
@@ -2026,11 +2087,19 @@ async function addSettingsButton(botMessage) {
 
 // <=====[Model Response Handling]=====>
 
-async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser) {
+async function handleModelResponse(initialBotMessage, chat, parts, originalMessage, typingInterval, historyId, mentionedUser, originalUserPrompt, retrievedMemoryCount = 0, personaDescriptor = 'default') {
   const userId = originalMessage.author.id;
   const userResponsePreference = originalMessage.guild && state.serverSettings[originalMessage.guild.id]?.serverResponsePreference ? state.serverSettings[originalMessage.guild.id].responseStyle : getUserResponsePreference(userId);
   const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
   let attempts = 3;
+  const startedAt = Date.now();
+  const tagsForMemory = [];
+  if (mentionedUser) {
+    tagsForMemory.push(`mention:${mentionedUser.id}`);
+  }
+  if (retrievedMemoryCount > 0) {
+    tagsForMemory.push('memory:retrieved');
+  }
 
   let updateTimeout;
   let tempResponse = '';
@@ -2235,6 +2304,26 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
         updateChatHistory(historyId, newHistory, botMessage.id);
         await saveStateToFile();
       });
+      const latencyMs = Date.now() - startedAt;
+      try {
+        await storeMessageTurn({
+          historyId,
+          guildId: originalMessage.guild ? originalMessage.guild.id : null,
+          channelId: originalMessage.channel ? originalMessage.channel.id : null,
+          userId: originalMessage.author.id,
+          username: originalMessage.author.username,
+          userMessageId: originalMessage.id,
+          assistantMessageId: botMessage?.id,
+          userContent: originalUserPrompt,
+          assistantContent: finalResponse,
+          persona: personaDescriptor,
+          latencyMs,
+          consent: originalMessage.guild ? 'shareable' : 'private',
+          tags: tagsForMemory,
+        });
+      } catch (memoryError) {
+        console.warn('Failed to persist turn to memory:', memoryError.message);
+      }
       break;
     } catch (error) {
       if (activeRequests.has(userId)) {

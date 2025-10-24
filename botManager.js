@@ -20,6 +20,11 @@ import {
   fileURLToPath
 } from 'url';
 import config from './config.js';
+import {
+  initializeMemory,
+  migrateLegacyHistories,
+  storeSelfContextSnippet,
+} from './memoryManager.js';
 
 // --- Core Client and API Initialization ---
 // Using new Google GenAI library instead of deprecated @google/generative-ai
@@ -300,6 +305,23 @@ function scheduleDailyReset() {
 export async function initialize() {
   scheduleDailyReset();
   await loadStateFromFile();
+  try {
+    await initializeMemory(genAI);
+    await migrateLegacyHistories(chatHistories);
+    const schemaVersion = process.env.MEMORY_SCHEMA_VERSION || 'v1';
+    await storeSelfContextSnippet('core-personality', config.defaultPersonality, {
+      title: 'Core Personality',
+      consent: 'shareable',
+      tags: ['persona', 'core'],
+    });
+    await storeSelfContextSnippet('memory-schema', `Current memory schema version: ${schemaVersion}. Collections available: messages, self_context, entities, archives.`, {
+      title: 'Memory Schema',
+      consent: 'shareable',
+      tags: ['memory', 'schema'],
+    });
+  } catch (error) {
+    console.warn('Memory initialization skipped:', error.message);
+  }
   console.log('Bot state loaded and initialized.');
 }
 
