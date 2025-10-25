@@ -249,6 +249,9 @@ import {
 } from './commands.js';
 
 let activityIndex = 0;
+let lastReferencedMembers = [];
+let lastRetrievedMemoryCount = 0;
+let lastOriginalUserPrompt = '';
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
@@ -842,7 +845,7 @@ async function handleTextMessage(message) {
   const relative = formatRelativeTime(now - messageTimestamp);
   finalInstructions += `\n\n---\n\n# Temporal Context\nCurrent UTC time: ${now.toISOString()}\nMost recent user message timestamp: ${messageTimestamp.toISOString()} (${relative} ago). Use this to distinguish recent events from older history.`;
 
-  finalInstructions += `\n\n---\n\n# Disclosure Guidance\nWhen asked about Fibz or other entities, consult the provided memories and share only items whose consent is shareable or belong to the requester. Decline or request consent before disclosing items marked private or consent_required.`;
+  finalInstructions += `\n\n---\n\n# Disclosure Guidance\nWhen asked about Fibz or other entities, consult the provided memories and share only items whose consent is shareable or belong to the requester. Proactively offer concise summaries drawn from shareable Fibz Internal Notes or Known Entities when a user requests them. Decline or request consent before disclosing items marked private or consent_required.`;
 
   // This part of the logic remains the same.
   const isChannelChatHistoryEnabled = guildId ? state.channelWideChatHistory[channelId] : false;
@@ -873,7 +876,19 @@ async function handleTextMessage(message) {
     history: getHistory(historyId)
   });
 
-  await handleModelResponse(botMessage, chat, parts, message, typingInterval, historyId, mentionedUser, initialUrlContextMetadata);
+  lastReferencedMembers = referencedMembers;
+  lastRetrievedMemoryCount = retrievedMemories.length;
+  lastOriginalUserPrompt = messageContent;
+  await handleModelResponse(
+    botMessage,
+    chat,
+    parts,
+    message,
+    typingInterval,
+    historyId,
+    mentionedUser,
+    initialUrlContextMetadata,
+  );
 }
 
 function hasSupportedAttachments(message) {
@@ -2479,14 +2494,16 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
   const maxCharacterLimit = userResponsePreference === 'Embedded' ? 3900 : 1900;
   let attempts = 3;
   const startedAt = Date.now();
+  const originalUserPrompt = lastOriginalUserPrompt || '';
+  const personaDescriptor = 'default';
   const tagsForMemory = [];
   if (mentionedUser) {
     tagsForMemory.push(`mention:${mentionedUser.id}`);
   }
-  if (retrievedMemoryCount > 0) {
+  if (lastRetrievedMemoryCount > 0) {
     tagsForMemory.push('memory:retrieved');
   }
-  referencedMembers.forEach((entry) => {
+  lastReferencedMembers.forEach((entry) => {
     tagsForMemory.push(`entity:${entry.id}`);
   });
 
@@ -2714,7 +2731,7 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
             globalName: originalMessage.author.globalName || null,
           },
           text: originalUserPrompt,
-          referenced_entities: referencedMembers.map((entry) => ({
+          referenced_entities: lastReferencedMembers.map((entry) => ({
             id: entry.id,
             username: entry.username,
             displayName: entry.displayName,
@@ -2729,6 +2746,13 @@ async function handleModelResponse(initialBotMessage, chat, parts, originalMessa
           channelId: originalMessage.channel ? originalMessage.channel.id : null,
           messageId: originalMessage.id,
           timestamp: new Date().toISOString(),
+          requester: {
+            id: originalMessage.author.id,
+            username: originalMessage.author.username,
+            displayName: originalMessage.member ? originalMessage.member.displayName : originalMessage.author.displayName,
+            globalName: originalMessage.author.globalName || null,
+          },
+          referencedEntityIds: lastReferencedMembers.map((entry) => entry.id),
         },
       });
       break;
@@ -2902,7 +2926,7 @@ async function sendAsTextFile(text, message, orgId) {
 
 // <==========>
 
-export { handleModelResponse };
+export { handleModelResponse, resolveReferencedMembers, isShareableEntity };
 
 if (process.env.NODE_ENV !== 'test') {
   client.login(token);

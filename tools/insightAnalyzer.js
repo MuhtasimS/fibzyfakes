@@ -39,7 +39,15 @@ async function runAnalysis(payload) {
           role: 'system',
           parts: [
             {
-              text: 'You are Fibz\'s background analyst. Respond ONLY in JSON with keys `self_context` and `entities`. Use short bullet summaries. Respect consent: mark any uncertain items as `consent_required`.',
+              text: [
+                "You are Fibz's background analyst.",
+                'Respond ONLY in JSON with keys `self_context` and `entities`.',
+                'For `self_context`, capture new facts about Fibz\'s behaviour, capabilities, preferences, or status.',
+                'For `entities`, capture knowledge about people or recurring topics.',
+                'Include `entity_id`, `name`, `summary`, and optional attributes where relevant.',
+                'Respect consent: mark uncertain or sensitive items as `consent_required` and omit private material.',
+                'Return an empty array for any key when there is nothing new.',
+              ].join('\n'),
             },
           ],
         },
